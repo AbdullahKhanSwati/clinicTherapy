@@ -21,6 +21,9 @@ import ProgressScreen from './src/screens/ProgressScreen';
 import JournalScreen from './src/screens/JournalScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import TherapyProgramsScreen from './src/screens/TherapyProgramsScreen';
+import ResourcesScreen from './src/screens/ResourcesScreen';
+import NotificationCenterScreen from './src/screens/NotificationCenterScreen';
+import BadgesScreen from './src/screens/BadgesScreen';
 import dataStore from './src/utils/dataStore';
 
 const Stack = createNativeStackNavigator();
@@ -124,6 +127,9 @@ export default function App() {
             <Stack.Screen name="Journal" component={JournalScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen name="TherapyPrograms" component={TherapyProgramsScreen} />
+            <Stack.Screen name="Resources" component={ResourcesScreen} />
+            <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
+            <Stack.Screen name="Badges" component={BadgesScreen} />
           </>
         )}
       </Stack.Navigator>

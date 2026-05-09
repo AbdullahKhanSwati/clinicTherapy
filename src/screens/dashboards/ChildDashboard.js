@@ -221,31 +221,33 @@ export default function ChildDashboard({ navigation }) {
       <SafeAreaView style={styles.container}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
-            <Text style={styles.title}>My Badges</Text>
+            <Text style={styles.title}>My Achievements</Text>
             <TouchableOpacity style={styles.backButton} onPress={() => setActiveTab('home')}>
               <Text style={styles.backButtonText}>← Back</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.badgesGrid}>
-            {BADGES.map(badge => (
-              <View key={badge.id} style={[styles.badgeCard, !badge.unlocked && styles.badgeCardLocked]}>
-                <Text style={styles.badgeEmoji}>{badge.emoji}</Text>
-                <Text style={styles.badgeTitle}>{badge.title}</Text>
-                {!badge.unlocked && <Text style={styles.badgeLock}>🔒</Text>}
-              </View>
-            ))}
+          <View style={styles.badgesPrompt}>
+            <Text style={styles.badgesEmoji}>🏆</Text>
+            <Text style={styles.badgesTitle}>Earn Amazing Badges!</Text>
+            <Text style={styles.badgesText}>Complete worksheets and activities to unlock achievements</Text>
+            <TouchableOpacity 
+              style={styles.viewBadgesButton}
+              onPress={() => navigation.navigate('Badges')}
+            >
+              <Text style={styles.viewBadgesButtonText}>View All Achievements →</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
         <View style={styles.tabBar}>
-          {['home', 'journal', 'badges'].map(tab => (
+          {['home', 'worksheets', 'journal', 'badges'].map(tab => (
             <TouchableOpacity
               key={tab}
               style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
               onPress={() => setActiveTab(tab)}
             >
               <Text style={styles.tabLabel}>
-                {tab === 'home' ? '🏠 Home' : tab === 'journal' ? '📔 Journal' : '🏆 Badges'}
+                {tab === 'home' ? '🏠 Home' : tab === 'worksheets' ? '📋 Work' : tab === 'journal' ? '📔 Journal' : '🏆 Badges'}
               </Text>
             </TouchableOpacity>
           ))}
@@ -659,6 +661,40 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
   },
   openJournalButtonText: {
+    color: COLORS.white,
+    fontWeight: '600',
+    fontSize: TYPOGRAPHY.sm,
+  },
+  badgesPrompt: {
+    backgroundColor: COLORS.primaryLighter,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.xl,
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+  },
+  badgesEmoji: {
+    fontSize: 48,
+    marginBottom: SPACING.md,
+  },
+  badgesTitle: {
+    fontSize: TYPOGRAPHY.base,
+    fontWeight: '600',
+    color: COLORS.primary,
+    marginBottom: SPACING.sm,
+  },
+  badgesText: {
+    fontSize: TYPOGRAPHY.sm,
+    color: COLORS.gray600,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+  },
+  viewBadgesButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  viewBadgesButtonText: {
     color: COLORS.white,
     fontWeight: '600',
     fontSize: TYPOGRAPHY.sm,
