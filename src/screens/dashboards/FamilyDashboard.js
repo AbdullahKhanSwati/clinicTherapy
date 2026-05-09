@@ -1,19 +1,43 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
   Text,
+  SafeAreaView,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/colors';
-import { useAuth } from '../../../App';
+import dataStore from '../../utils/dataStore';
 
-export default function FamilyDashboard() {
-  const { signOut } = useAuth();
+export default function FamilyDashboard({ navigation }) {
+  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        await dataStore.initialize();
+        const user = await dataStore.getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        console.error('[v0] Error loading data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
   const handleLogout = async () => {
-    await signOut();
+    await AsyncStorage.removeItem('userToken');
+    await AsyncStorage.removeItem('userRole');
+    await AsyncStorage.removeItem('userEmail');
+    navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
   };
 
   const FAMILY_MEMBERS = [
@@ -33,9 +57,20 @@ export default function FamilyDashboard() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Text style={styles.greeting}>👨‍👩‍👧‍👦 Family Hub</Text>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity 
+              style={styles.headerButton}
+              onPress={() => navigation.navigate('Progress')}
+            >
+              <Text style={styles.headerIcon}>📊</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.headerButton}
+              onPress={() => navigation.navigate('Settings')}
+            >
+              <Text style={styles.headerIcon}>⚙️</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.card}>
@@ -128,6 +163,21 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: TYPOGRAPHY.sm,
     fontWeight: '600',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+  },
+  headerButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryLighter,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerIcon: {
+    fontSize: TYPOGRAPHY.lg,
   },
   card: {
     backgroundColor: COLORS.surface,

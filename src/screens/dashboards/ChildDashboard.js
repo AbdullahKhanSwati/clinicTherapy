@@ -1,23 +1,54 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
   Text,
+  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   Image,
+  ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/colors';
-import { useAuth } from '../../../App';
+import { WORKSHEET_TEMPLATES } from '../../data/worksheetTemplates';
+import dataStore from '../../utils/dataStore';
 
-export default function ChildDashboard() {
-  const { signOut } = useAuth();
+export default function ChildDashboard({ navigation }) {
   const [activeTab, setActiveTab] = useState('home');
   const [moodToday, setMoodToday] = useState('happy');
+  const [assignments, setAssignments] = useState([]);
+  const [loadingAssignments, setLoadingAssignments] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    const loadAssignments = async () => {
+      try {
+        setLoadingAssignments(true);
+        await dataStore.initialize();
+        
+        const user = await dataStore.getCurrentUser();
+        setCurrentUser(user);
+
+        if (user) {
+          const userAssignments = await dataStore.getAssignmentsByClient(user.id);
+          setAssignments(userAssignments);
+        }
+      } catch (error) {
+        console.error('[v0] Error loading assignments:', error);
+      } finally {
+        setLoadingAssignments(false);
+      }
+    };
+
+    loadAssignments();
+  }, []);
 
   const handleLogout = async () => {
-    await signOut();
+    await AsyncStorage.removeItem('userToken');
+    await AsyncStorage.removeItem('userRole');
+    await AsyncStorage.removeItem('userEmail');
+    navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
   };
 
   const ACTIVITIES = [
@@ -41,6 +72,110 @@ export default function ChildDashboard() {
     { value: 'excited', emoji: '🤩', label: 'Excited' },
   ];
 
+  if (activeTab === 'worksheets') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.header}>
+            <Text style={styles.title}>My Worksheets</Text>
+            <TouchableOpacity style={styles.backButton} onPress={() => setActiveTab('home')}>
+              <Text style={styles.backButtonText}>← Back</Text>
+            </TouchableOpacity>
+          </View>
+
+          {loadingAssignments ? (
+            <View style={styles.centerContent}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+          ) : assignments.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyEmoji}>📋</Text>
+              <Text style={styles.emptyText}>No worksheets assigned yet!</Text>
+            </View>
+          ) : (
+            <View style={styles.worksheetsContainer}>
+              {assignments.map((assignment) => {
+                const worksheet = WORKSHEET_TEMPLATES[assignment.worksheetId];
+                if (!worksheet) return null;
+
+                const statusColor =
+                  assignment.status === 'completed'
+                    ? COLORS.success
+                    : assignment.status === 'in-progress'
+                    ? COLORS.warning
+                    : COLORS.gray500;
+
+                return (
+                  <TouchableOpacity
+                    key={assignment.id}
+                    style={styles.worksheetCard}
+                    onPress={() =>
+                      navigation.navigate('Worksheet', {
+                        worksheetId: assignment.worksheetId,
+                        assignmentId: assignment.id,
+                      })
+                    }
+                  >
+                    <View style={styles.worksheetHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.worksheetTitle}>{worksheet.title}</Text>
+                        <Text style={styles.worksheetCategory}>{worksheet.category}</Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          { backgroundColor: statusColor + '20', borderColor: statusColor },
+                        ]}
+                      >
+                        <Text style={[styles.statusText, { color: statusColor }]}>
+                          {assignment.status === 'pending'
+                            ? '📝 New'
+                            : assignment.status === 'in-progress'
+                            ? '⏳ In Progress'
+                            : '✓ Completed'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.worksheetDescription}>{worksheet.description}</Text>
+
+                    <View style={styles.worksheetFooter}>
+                      <Text style={styles.worksheetTime}>{worksheet.estimatedTime}</Text>
+                      <TouchableOpacity style={styles.startButton}>
+                        <Text style={styles.startButtonText}>
+                          {assignment.status === 'completed' ? 'Review' : 'Start'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </ScrollView>
+        <View style={styles.tabBar}>
+          {['home', 'worksheets', 'journal', 'badges'].map(tab => (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
+              onPress={() => setActiveTab(tab)}
+            >
+              <Text style={styles.tabLabel}>
+                {tab === 'home'
+                  ? '🏠 Home'
+                  : tab === 'worksheets'
+                  ? '📋 Work'
+                  : tab === 'journal'
+                  ? '📔 Journal'
+                  : '🏆 Badges'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (activeTab === 'journal') {
     return (
       <SafeAreaView style={styles.container}>
@@ -52,31 +187,27 @@ export default function ChildDashboard() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.journalEntry}>
-            <Text style={styles.journalDate}>Today's Happy Moments</Text>
-            <View style={styles.journalCard}>
-              <Text style={styles.journalIcon}>☀️</Text>
-              <Text style={styles.journalText}>I played with my friend at recess!</Text>
-            </View>
-            <View style={styles.journalCard}>
-              <Text style={styles.journalIcon}>🍪</Text>
-              <Text style={styles.journalText}>Mom made my favorite cookies</Text>
-            </View>
-            <View style={styles.journalCard}>
-              <Text style={styles.journalIcon}>📚</Text>
-              <Text style={styles.journalText}>I finished reading a cool book</Text>
-            </View>
+          <View style={styles.journalPrompt}>
+            <Text style={styles.journalPromptEmoji}>📔</Text>
+            <Text style={styles.journalPromptTitle}>Ready to write?</Text>
+            <Text style={styles.journalPromptText}>Share your thoughts, feelings, and happy moments!</Text>
+            <TouchableOpacity 
+              style={styles.openJournalButton}
+              onPress={() => navigation.navigate('Journal')}
+            >
+              <Text style={styles.openJournalButtonText}>Open Full Journal →</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
         <View style={styles.tabBar}>
-          {['home', 'journal', 'badges'].map(tab => (
+          {['home', 'worksheets', 'journal', 'badges'].map(tab => (
             <TouchableOpacity
               key={tab}
               style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
               onPress={() => setActiveTab(tab)}
             >
               <Text style={styles.tabLabel}>
-                {tab === 'home' ? '🏠 Home' : tab === 'journal' ? '📔 Journal' : '🏆 Badges'}
+                {tab === 'home' ? '🏠 Home' : tab === 'worksheets' ? '📋 Work' : tab === 'journal' ? '📔 Journal' : '🏆 Badges'}
               </Text>
             </TouchableOpacity>
           ))}
@@ -90,31 +221,33 @@ export default function ChildDashboard() {
       <SafeAreaView style={styles.container}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
-            <Text style={styles.title}>My Badges</Text>
+            <Text style={styles.title}>My Achievements</Text>
             <TouchableOpacity style={styles.backButton} onPress={() => setActiveTab('home')}>
               <Text style={styles.backButtonText}>← Back</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.badgesGrid}>
-            {BADGES.map(badge => (
-              <View key={badge.id} style={[styles.badgeCard, !badge.unlocked && styles.badgeCardLocked]}>
-                <Text style={styles.badgeEmoji}>{badge.emoji}</Text>
-                <Text style={styles.badgeTitle}>{badge.title}</Text>
-                {!badge.unlocked && <Text style={styles.badgeLock}>🔒</Text>}
-              </View>
-            ))}
+          <View style={styles.badgesPrompt}>
+            <Text style={styles.badgesEmoji}>🏆</Text>
+            <Text style={styles.badgesTitle}>Earn Amazing Badges!</Text>
+            <Text style={styles.badgesText}>Complete worksheets and activities to unlock achievements</Text>
+            <TouchableOpacity 
+              style={styles.viewBadgesButton}
+              onPress={() => navigation.navigate('Badges')}
+            >
+              <Text style={styles.viewBadgesButtonText}>View All Achievements →</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
         <View style={styles.tabBar}>
-          {['home', 'journal', 'badges'].map(tab => (
+          {['home', 'worksheets', 'journal', 'badges'].map(tab => (
             <TouchableOpacity
               key={tab}
               style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
               onPress={() => setActiveTab(tab)}
             >
               <Text style={styles.tabLabel}>
-                {tab === 'home' ? '🏠 Home' : tab === 'journal' ? '📔 Journal' : '🏆 Badges'}
+                {tab === 'home' ? '🏠 Home' : tab === 'worksheets' ? '📋 Work' : tab === 'journal' ? '📔 Journal' : '🏆 Badges'}
               </Text>
             </TouchableOpacity>
           ))}
@@ -178,14 +311,20 @@ export default function ChildDashboard() {
       </ScrollView>
 
       <View style={styles.tabBar}>
-        {['home', 'journal', 'badges'].map(tab => (
+        {['home', 'worksheets', 'journal', 'badges'].map(tab => (
           <TouchableOpacity
             key={tab}
             style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
             onPress={() => setActiveTab(tab)}
           >
             <Text style={styles.tabLabel}>
-              {tab === 'home' ? '🏠 Home' : tab === 'journal' ? '📔 Journal' : '🏆 Badges'}
+              {tab === 'home'
+                ? '🏠 Home'
+                : tab === 'worksheets'
+                ? '📋 Work'
+                : tab === 'journal'
+                ? '📔 Journal'
+                : '🏆 Badges'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -407,5 +546,157 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.xs,
     fontWeight: '600',
     color: COLORS.gray700,
+  },
+  worksheetsContainer: {
+    gap: SPACING.md,
+  },
+  worksheetCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    marginBottom: SPACING.md,
+  },
+  worksheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.md,
+  },
+  worksheetTitle: {
+    fontSize: TYPOGRAPHY.base,
+    fontWeight: '600',
+    color: COLORS.gray700,
+    marginBottom: SPACING.xs,
+  },
+  worksheetCategory: {
+    fontSize: TYPOGRAPHY.xs,
+    color: COLORS.gray500,
+  },
+  statusBadge: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+  },
+  statusText: {
+    fontSize: TYPOGRAPHY.xs,
+    fontWeight: '600',
+  },
+  worksheetDescription: {
+    fontSize: TYPOGRAPHY.sm,
+    color: COLORS.gray600,
+    marginBottom: SPACING.md,
+    lineHeight: 20,
+  },
+  worksheetFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray200,
+  },
+  worksheetTime: {
+    fontSize: TYPOGRAPHY.xs,
+    color: COLORS.gray500,
+  },
+  startButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  startButtonText: {
+    color: COLORS.white,
+    fontSize: TYPOGRAPHY.xs,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING['2xl'],
+  },
+  emptyEmoji: {
+    fontSize: 48,
+    marginBottom: SPACING.lg,
+  },
+  emptyText: {
+    fontSize: TYPOGRAPHY.base,
+    color: COLORS.gray500,
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  journalPrompt: {
+    backgroundColor: COLORS.primaryLighter,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.xl,
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+  },
+  journalPromptEmoji: {
+    fontSize: 48,
+    marginBottom: SPACING.md,
+  },
+  journalPromptTitle: {
+    fontSize: TYPOGRAPHY.base,
+    fontWeight: '600',
+    color: COLORS.primary,
+    marginBottom: SPACING.sm,
+  },
+  journalPromptText: {
+    fontSize: TYPOGRAPHY.sm,
+    color: COLORS.gray600,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+  },
+  openJournalButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  openJournalButtonText: {
+    color: COLORS.white,
+    fontWeight: '600',
+    fontSize: TYPOGRAPHY.sm,
+  },
+  badgesPrompt: {
+    backgroundColor: COLORS.primaryLighter,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.xl,
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+  },
+  badgesEmoji: {
+    fontSize: 48,
+    marginBottom: SPACING.md,
+  },
+  badgesTitle: {
+    fontSize: TYPOGRAPHY.base,
+    fontWeight: '600',
+    color: COLORS.primary,
+    marginBottom: SPACING.sm,
+  },
+  badgesText: {
+    fontSize: TYPOGRAPHY.sm,
+    color: COLORS.gray600,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+  },
+  viewBadgesButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  viewBadgesButtonText: {
+    color: COLORS.white,
+    fontWeight: '600',
+    fontSize: TYPOGRAPHY.sm,
   },
 });

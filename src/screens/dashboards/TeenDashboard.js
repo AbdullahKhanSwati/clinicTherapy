@@ -1,21 +1,60 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
   Text,
+  SafeAreaView,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/colors';
-import { useAuth } from '../../../App';
+import { WORKSHEET_TEMPLATES } from '../../data/worksheetTemplates';
+import dataStore from '../../utils/dataStore';
 
-export default function TeenDashboard() {
-  const { signOut } = useAuth();
+export default function TeenDashboard({ navigation }) {
   const [activeTab, setActiveTab] = useState('home');
+  const [assignments, setAssignments] = useState([]);
+  const [moodEntries, setMoodEntries] = useState([]);
+  const [journalEntries, setJournalEntries] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        await dataStore.initialize();
+        
+        const user = await dataStore.getCurrentUser();
+        setCurrentUser(user);
+
+        if (user) {
+          const userAssignments = await dataStore.getAssignmentsByClient(user.id);
+          setAssignments(userAssignments);
+
+          const moods = await dataStore.getMoodEntriesByUser(user.id);
+          setMoodEntries(moods.slice(0, 5)); // Last 5 moods
+
+          const journals = await dataStore.getJournalEntriesByUser(user.id);
+          setJournalEntries(journals.slice(0, 5)); // Last 5 entries
+        }
+      } catch (error) {
+        console.error('[v0] Error loading data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
 
   const handleLogout = async () => {
-    await signOut();
+    await AsyncStorage.removeItem('userToken');
+    await AsyncStorage.removeItem('userRole');
+    await AsyncStorage.removeItem('userEmail');
+    navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
   };
 
   const WORKSHEETS = [
@@ -96,49 +135,132 @@ export default function TeenDashboard() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Text style={styles.greeting}>Welcome back! 👋</Text>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Today's Check-in</Text>
-          <Text style={styles.checkInQuestion}>How are you feeling right now?</Text>
-          <View style={styles.emotionScale}>
-            {['😢', '😐', '😊', '😄'].map((emoji, i) => (
-              <TouchableOpacity key={i} style={styles.emotionButton}>
-                <Text style={styles.emotionEmoji}>{emoji}</Text>
-              </TouchableOpacity>
-            ))}
+          <View style={styles.headerButtons}>
+            <TouchableOpacity 
+              style={styles.headerButton}
+              onPress={() => navigation.navigate('Progress')}
+            >
+              <Text style={styles.headerIcon}>📊</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.headerButton}
+              onPress={() => navigation.navigate('Journal')}
+            >
+              <Text style={styles.headerIcon}>📔</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.headerButton}
+              onPress={() => navigation.navigate('Settings')}
+            >
+              <Text style={styles.headerIcon}>⚙️</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Active Worksheets</Text>
-          {WORKSHEETS.map(ws => (
-            <View key={ws.id} style={styles.worksheetItem}>
-              <View>
-                <Text style={styles.worksheetTitle}>{ws.title}</Text>
-                <Text style={styles.worksheetCategory}>{ws.category}</Text>
-              </View>
-              <View style={styles.progressContainer}>
-                <Text style={styles.progressText}>{ws.progress}%</Text>
+          <Text style={styles.sectionTitle}>Mood Check-in</Text>
+          <Text style={styles.checkInQuestion}>How are you feeling right now?</Text>
+          <TouchableOpacity 
+            style={styles.moodCheckButton}
+            onPress={() => navigation.navigate('MoodCheckIn')}
+          >
+            <Text style={styles.moodCheckEmoji}>💭</Text>
+            <Text style={styles.moodCheckText}>Quick Check-In</Text>
+          </TouchableOpacity>
+          
+          {moodEntries.length > 0 && (
+            <View style={styles.recentMoods}>
+              <Text style={styles.recentMoodsLabel}>Recent moods:</Text>
+              <View style={styles.moodHistory}>
+                {moodEntries.slice(0, 5).map((entry, i) => {
+                  const moodEmojis = {
+                    happy: '😊',
+                    sad: '😢',
+                    angry: '😠',
+                    anxious: '😰',
+                    calm: '😌',
+                    excited: '🤩',
+                    confused: '😕',
+                    overwhelmed: '😩',
+                  };
+                  return (
+                    <Text key={i} style={styles.moodBubble}>
+                      {moodEmojis[entry.mood] || '😐'}
+                    </Text>
+                  );
+                })}
               </View>
             </View>
-          ))}
+          )}
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Recent Reflections</Text>
-          {RECENT_REFLECTIONS.map((ref, i) => (
-            <View key={i} style={styles.reflectionItem}>
-              <Text style={styles.reflectionEmoji}>{ref.emotion}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.reflectionDate}>{ref.date}</Text>
-                <Text style={styles.reflectionText}>{ref.text}</Text>
+          <View style={styles.cardTitleRow}>
+            <Text style={styles.sectionTitle}>Therapy & Learning</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('TherapyPrograms')}>
+              <Text style={styles.viewAllLink}>Programs →</Text>
+            </TouchableOpacity>
+          </View>
+          {loading ? (
+            <ActivityIndicator color={COLORS.primary} />
+          ) : assignments.length === 0 ? (
+            <Text style={styles.emptyText}>No worksheets assigned yet</Text>
+          ) : (
+            assignments.slice(0, 3).map(assignment => {
+              const worksheet = WORKSHEET_TEMPLATES[assignment.worksheetId];
+              if (!worksheet) return null;
+
+              const statusEmoji =
+                assignment.status === 'completed'
+                  ? '✓'
+                  : assignment.status === 'in-progress'
+                  ? '⏳'
+                  : '📝';
+
+              return (
+                <TouchableOpacity
+                  key={assignment.id}
+                  style={styles.worksheetItem}
+                  onPress={() =>
+                    navigation.navigate('Worksheet', {
+                      worksheetId: assignment.worksheetId,
+                      assignmentId: assignment.id,
+                    })
+                  }
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.worksheetTitle}>{worksheet.title}</Text>
+                    <Text style={styles.worksheetCategory}>{worksheet.category}</Text>
+                  </View>
+                  <Text style={styles.statusEmoji}>{statusEmoji} {assignment.status}</Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardTitleRow}>
+            <Text style={styles.sectionTitle}>Journal</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Journal')}>
+              <Text style={styles.viewAllLink}>New entry →</Text>
+            </TouchableOpacity>
+          </View>
+          {loading ? (
+            <ActivityIndicator color={COLORS.primary} />
+          ) : journalEntries.length === 0 ? (
+            <Text style={styles.emptyText}>No journal entries yet. Start reflecting!</Text>
+          ) : (
+            journalEntries.slice(0, 3).map((entry, i) => (
+              <View key={i} style={styles.reflectionItem}>
+                <Text style={styles.reflectionEmoji}>{entry.mood === 'happy' ? '😊' : entry.mood === 'sad' ? '😢' : '😌'}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reflectionDate}>{new Date(entry.date).toLocaleDateString()}</Text>
+                  <Text style={styles.reflectionText} numberOfLines={2}>{entry.title}</Text>
+                </View>
               </View>
-            </View>
-          ))}
+            ))
+          )}
         </View>
       </ScrollView>
 
@@ -223,20 +345,78 @@ const styles = StyleSheet.create({
     color: COLORS.gray600,
     marginBottom: SPACING.md,
   },
-  emotionScale: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  emotionButton: {
+  moodCheckButton: {
+    backgroundColor: COLORS.primaryLighter,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    width: 50,
-    height: 50,
-    borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.gray50,
+    marginBottom: SPACING.md,
   },
-  emotionEmoji: {
-    fontSize: TYPOGRAPHY['2xl'],
+  moodCheckEmoji: {
+    fontSize: 32,
+    marginBottom: SPACING.sm,
+  },
+  moodCheckText: {
+    color: COLORS.primary,
+    fontWeight: '600',
+    fontSize: TYPOGRAPHY.sm,
+  },
+  recentMoods: {
+    marginTop: SPACING.lg,
+    paddingTop: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray200,
+  },
+  recentMoodsLabel: {
+    fontSize: TYPOGRAPHY.xs,
+    color: COLORS.gray600,
+    marginBottom: SPACING.md,
+    fontWeight: '500',
+  },
+  moodHistory: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+  },
+  moodBubble: {
+    fontSize: TYPOGRAPHY.xl,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  viewAllLink: {
+    color: COLORS.primary,
+    fontWeight: '600',
+    fontSize: TYPOGRAPHY.xs,
+  },
+  emptyText: {
+    fontSize: TYPOGRAPHY.sm,
+    color: COLORS.gray500,
+    textAlign: 'center',
+    paddingVertical: SPACING.md,
+  },
+  statusEmoji: {
+    fontSize: TYPOGRAPHY.sm,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+  },
+  headerButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryLighter,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerIcon: {
+    fontSize: TYPOGRAPHY.lg,
   },
   worksheetItem: {
     flexDirection: 'row',
