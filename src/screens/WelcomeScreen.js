@@ -5,9 +5,9 @@ import {
   Text,
   TouchableOpacity,
   Image,
-  SafeAreaView,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
 
 export default function WelcomeScreen({ navigation }) {

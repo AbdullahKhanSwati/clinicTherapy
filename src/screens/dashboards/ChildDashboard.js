@@ -3,23 +3,21 @@ import {
   View,
   StyleSheet,
   Text,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   Image,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/colors';
+import { useAuth } from '../../../App';
 
-export default function ChildDashboard({ navigation }) {
+export default function ChildDashboard() {
+  const { signOut } = useAuth();
   const [activeTab, setActiveTab] = useState('home');
   const [moodToday, setMoodToday] = useState('happy');
 
   const handleLogout = async () => {
-    await AsyncStorage.removeItem('userToken');
-    await AsyncStorage.removeItem('userRole');
-    await AsyncStorage.removeItem('userEmail');
-    navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
+    await signOut();
   };
 
   const ACTIVITIES = [

@@ -6,13 +6,14 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  SafeAreaView,
   Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
+import { useAuth } from '../../App';
 
 export default function RegisterScreen({ navigation }) {
+  const { signIn } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,10 +38,7 @@ export default function RegisterScreen({ navigation }) {
 
     setLoading(true);
     try {
-      // In a real app, this would create an account on the backend
-      await AsyncStorage.setItem('userToken', 'demo_token_new_user');
-      await AsyncStorage.setItem('userEmail', email);
-      navigation.reset({ index: 0, routes: [{ name: 'RoleSelection' }] });
+      await signIn({ token: 'demo_token_new_user', email });
     } catch (error) {
       Alert.alert('Error', 'Registration failed');
     } finally {

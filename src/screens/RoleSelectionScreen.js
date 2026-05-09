@@ -4,11 +4,11 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  SafeAreaView,
   ScrollView,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
+import { useAuth } from '../../App';
 
 const ROLES = [
   {
@@ -44,13 +44,13 @@ const ROLES = [
 ];
 
 export default function RoleSelectionScreen({ navigation }) {
+  const { setRole } = useAuth();
   const [loading, setLoading] = useState(false);
 
   const handleRoleSelect = async (role) => {
     setLoading(true);
     try {
-      await AsyncStorage.setItem('userRole', role);
-      navigation.reset({ index: 0, routes: [{ name: role + 'Dashboard' }] });
+      await setRole(role);
     } catch (error) {
       console.error('Failed to select role:', error);
     } finally {

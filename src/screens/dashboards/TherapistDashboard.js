@@ -3,21 +3,19 @@ import {
   View,
   StyleSheet,
   Text,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/colors';
+import { useAuth } from '../../../App';
 
-export default function TherapistDashboard({ navigation }) {
+export default function TherapistDashboard() {
+  const { signOut } = useAuth();
   const [activeTab, setActiveTab] = useState('home');
 
   const handleLogout = async () => {
-    await AsyncStorage.removeItem('userToken');
-    await AsyncStorage.removeItem('userRole');
-    await AsyncStorage.removeItem('userEmail');
-    navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
+    await signOut();
   };
 
   const CLIENTS = [

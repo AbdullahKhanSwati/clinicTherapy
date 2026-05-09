@@ -1,9 +1,12 @@
 const { getDefaultConfig } = require('expo/metro-config');
+const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
-// Configure to ignore TypeScript files in old directories
-config.resolver.sourceExts = ['js', 'jsx', 'json'];
-config.resolver.blacklistRE = /node_modules\/.*\.(ts|tsx)$/;
+config.resolver.blockList = [
+  new RegExp(`${path.resolve(__dirname, 'components').replace(/\\/g, '\\\\')}/.*`),
+  new RegExp(`${path.resolve(__dirname, 'styles').replace(/\\/g, '\\\\')}/.*`),
+  new RegExp(`${path.resolve(__dirname, 'public').replace(/\\/g, '\\\\')}/.*`),
+];
 
 module.exports = config;

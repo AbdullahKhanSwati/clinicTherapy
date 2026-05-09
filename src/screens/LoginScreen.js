@@ -6,11 +6,11 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  SafeAreaView,
   Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
+import { useAuth } from '../../App';
 
 const DEMO_USERS = [
   { email: 'child@therapy.com', role: 'child', name: 'Emma (Child)' },
@@ -21,6 +21,7 @@ const DEMO_USERS = [
 ];
 
 export default function LoginScreen({ navigation }) {
+  const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,10 +29,11 @@ export default function LoginScreen({ navigation }) {
   const handleDemoLogin = async (role) => {
     setLoading(true);
     try {
-      await AsyncStorage.setItem('userToken', 'demo_token_' + role);
-      await AsyncStorage.setItem('userRole', role);
-      await AsyncStorage.setItem('userEmail', email || 'demo@therapy.com');
-      navigation.reset({ index: 0, routes: [{ name: role + 'Dashboard' }] });
+      await signIn({
+        token: 'demo_token_' + role,
+        role,
+        email: email || 'demo@therapy.com',
+      });
     } catch (error) {
       Alert.alert('Error', 'Failed to login');
     } finally {
@@ -47,14 +49,13 @@ export default function LoginScreen({ navigation }) {
 
     setLoading(true);
     try {
-      // In a real app, this would authenticate against a backend
-      // For demo, we'll just set some mock data
       const demoUser = DEMO_USERS.find(u => u.email === email);
       if (demoUser) {
-        await AsyncStorage.setItem('userToken', 'demo_token_' + demoUser.role);
-        await AsyncStorage.setItem('userRole', demoUser.role);
-        await AsyncStorage.setItem('userEmail', email);
-        navigation.reset({ index: 0, routes: [{ name: demoUser.role + 'Dashboard' }] });
+        await signIn({
+          token: 'demo_token_' + demoUser.role,
+          role: demoUser.role,
+          email,
+        });
       } else {
         Alert.alert('Error', 'User not found. Try a demo account below.');
       }
