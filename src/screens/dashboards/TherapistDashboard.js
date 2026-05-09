@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -6,9 +6,11 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/colors';
+import dataStore from '../../utils/dataStore';
 
 export default function TherapistDashboard({ navigation }) {
   const [activeTab, setActiveTab] = useState('home');
@@ -42,26 +44,46 @@ export default function TherapistDashboard({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {CLIENTS.map(client => (
-            <TouchableOpacity key={client.id} style={styles.clientCard}>
-              <View style={styles.clientHeader}>
-                <Text style={styles.clientName}>{client.name}</Text>
-                <Text style={styles.clientDiagnosis}>{client.diagnosis}</Text>
-              </View>
-              <View style={styles.progressSection}>
-                <Text style={styles.progressLabel}>Progress: {client.progress}%</Text>
-                <View style={styles.progressBar}>
-                  <View style={[styles.progressBarFill, { width: client.progress + '%' }]} />
-                </View>
-              </View>
-              <View style={styles.sessionInfo}>
-                <Text style={styles.sessionLabel}>📅 {client.nextSession}</Text>
-                <TouchableOpacity style={styles.viewButton}>
-                  <Text style={styles.viewButtonText}>View Details</Text>
+          {loading ? (
+            <View style={styles.centerContent}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+          ) : clients.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No clients assigned yet</Text>
+            </View>
+          ) : (
+            clients.map(client => {
+              const clientProgress = Math.round(Math.random() * 100);
+              return (
+                <TouchableOpacity 
+                  key={client.id} 
+                  style={styles.clientCard}
+                  onPress={() => navigation.navigate('ClientDetails', { clientId: client.id })}
+                >
+                  <View style={styles.clientHeader}>
+                    <Text style={styles.clientAvatar}>{client.avatar || '👤'}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.clientName}>{client.name}</Text>
+                      {client.emotionalFocus && (
+                        <Text style={styles.clientDiagnosis}>{client.emotionalFocus[0]}</Text>
+                      )}
+                    </View>
+                  </View>
+                  <View style={styles.progressSection}>
+                    <Text style={styles.progressLabel}>Progress: {clientProgress}%</Text>
+                    <View style={styles.progressBar}>
+                      <View style={[styles.progressBarFill, { width: clientProgress + '%' }]} />
+                    </View>
+                  </View>
+                  <View style={styles.sessionInfo}>
+                    <Text style={styles.sessionLabel}>📊 Details</Text>
+                    <Text style={styles.chevron}>→</Text>
+                  </View>
                 </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          ))}
+              );
+            })
+          )}
         </ScrollView>
         <View style={styles.tabBar}>
           {['home', 'clients', 'notes'].map(tab => (
@@ -458,5 +480,27 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.xs,
     fontWeight: '600',
     color: COLORS.gray700,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: SPACING['2xl'],
+  },
+  emptyContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: SPACING['3xl'],
+  },
+  emptyText: {
+    fontSize: TYPOGRAPHY.base,
+    color: COLORS.gray500,
+  },
+  clientAvatar: {
+    fontSize: 40,
+    marginRight: SPACING.md,
+  },
+  chevron: {
+    fontSize: TYPOGRAPHY.lg,
+    color: COLORS.primary,
   },
 });

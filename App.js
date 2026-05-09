@@ -13,6 +13,15 @@ import TeenDashboard from './src/screens/dashboards/TeenDashboard';
 import CouplesDashboard from './src/screens/dashboards/CouplesDashboard';
 import FamilyDashboard from './src/screens/dashboards/FamilyDashboard';
 import TherapistDashboard from './src/screens/dashboards/TherapistDashboard';
+import WorksheetScreen from './src/screens/WorksheetScreen';
+import MoodCheckInScreen from './src/screens/MoodCheckInScreen';
+import WorksheetLibraryScreen from './src/screens/therapist/WorksheetLibraryScreen';
+import ClientDetailsScreen from './src/screens/therapist/ClientDetailsScreen';
+import ProgressScreen from './src/screens/ProgressScreen';
+import JournalScreen from './src/screens/JournalScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
+import TherapyProgramsScreen from './src/screens/TherapyProgramsScreen';
+import dataStore from './src/utils/dataStore';
 
 const Stack = createNativeStackNavigator();
 
@@ -27,15 +36,36 @@ export default function App() {
   useEffect(() => {
     const bootstrapAsync = async () => {
       try {
+        // Initialize data store
+        await dataStore.initialize();
+
         const token = await AsyncStorage.getItem('userToken');
         const role = await AsyncStorage.getItem('userRole');
+        
+        // Set mock user if no token exists (for demo purposes)
+        if (!token) {
+          await AsyncStorage.setItem('userToken', 'demo-token');
+          await AsyncStorage.setItem('userRole', 'child');
+          
+          // Set current user to child1 for demo
+          const child1 = {
+            id: 'child1',
+            name: 'Sophie',
+            email: 'sophie@example.com',
+            role: 'child',
+            age: 8,
+          };
+          await dataStore.setCurrentUser(child1);
+        }
+
         setAuthState({
           isLoading: false,
           isSignout: false,
-          userToken: token,
-          userRole: role,
+          userToken: token || 'demo-token',
+          userRole: role || 'child',
         });
       } catch (e) {
+        console.error('[v0] Bootstrap error:', e);
         setAuthState({
           isLoading: false,
           isSignout: false,
@@ -85,6 +115,15 @@ export default function App() {
             {authState.userRole === 'therapist' && (
               <Stack.Screen name="TherapistDashboard" component={TherapistDashboard} />
             )}
+            {/* Shared screens accessible from any role */}
+            <Stack.Screen name="Worksheet" component={WorksheetScreen} />
+            <Stack.Screen name="MoodCheckIn" component={MoodCheckInScreen} />
+            <Stack.Screen name="WorksheetLibrary" component={WorksheetLibraryScreen} />
+            <Stack.Screen name="ClientDetails" component={ClientDetailsScreen} />
+            <Stack.Screen name="Progress" component={ProgressScreen} />
+            <Stack.Screen name="Journal" component={JournalScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="TherapyPrograms" component={TherapyProgramsScreen} />
           </>
         )}
       </Stack.Navigator>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -6,11 +6,33 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/colors';
+import dataStore from '../../utils/dataStore';
 
 export default function CouplesDashboard({ navigation }) {
+  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        await dataStore.initialize();
+        const user = await dataStore.getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        console.error('[v0] Error loading data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
   const handleLogout = async () => {
     await AsyncStorage.removeItem('userToken');
     await AsyncStorage.removeItem('userRole');
@@ -29,9 +51,20 @@ export default function CouplesDashboard({ navigation }) {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Text style={styles.greeting}>💑 Couples Therapy</Text>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity 
+              style={styles.headerButton}
+              onPress={() => navigation.navigate('Progress')}
+            >
+              <Text style={styles.headerIcon}>📊</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.headerButton}
+              onPress={() => navigation.navigate('Settings')}
+            >
+              <Text style={styles.headerIcon}>⚙️</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.card}>
@@ -120,6 +153,21 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: TYPOGRAPHY.sm,
     fontWeight: '600',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+  },
+  headerButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryLighter,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerIcon: {
+    fontSize: TYPOGRAPHY.lg,
   },
   card: {
     backgroundColor: COLORS.surface,
