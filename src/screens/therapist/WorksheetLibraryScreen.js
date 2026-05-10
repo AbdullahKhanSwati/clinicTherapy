@@ -3,12 +3,12 @@ import {
   View,
   StyleSheet,
   Text,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   TextInput,
   FlatList,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/colors';
 import { WORKSHEET_TEMPLATES } from '../../data/worksheetTemplates';
 

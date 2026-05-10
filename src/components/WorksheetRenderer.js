@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   ScrollView,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   Modal,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
 
 // Import question type components

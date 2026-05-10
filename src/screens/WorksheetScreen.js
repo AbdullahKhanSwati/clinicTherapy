@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   ScrollView,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
 import WorksheetRenderer from '../components/WorksheetRenderer';
 import { WORKSHEET_TEMPLATES } from '../data/worksheetTemplates';

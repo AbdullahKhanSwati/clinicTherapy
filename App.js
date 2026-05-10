@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, createContext, useContext, useCallback } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 
 import SplashScreen from './src/screens/SplashScreen';
 import WelcomeScreen from './src/screens/WelcomeScreen';
@@ -28,10 +30,28 @@ import dataStore from './src/utils/dataStore';
 
 const Stack = createNativeStackNavigator();
 
+const AuthContext = createContext(null);
+export const useAuth = () => useContext(AuthContext);
+
+const ROLE_TO_SCREEN = {
+  child: 'ChildDashboard',
+  teen: 'TeenDashboard',
+  couples: 'CouplesDashboard',
+  family: 'FamilyDashboard',
+  therapist: 'TherapistDashboard',
+};
+
+const ROLE_TO_COMPONENT = {
+  child: ChildDashboard,
+  teen: TeenDashboard,
+  couples: CouplesDashboard,
+  family: FamilyDashboard,
+  therapist: TherapistDashboard,
+};
+
 export default function App() {
   const [authState, setAuthState] = useState({
     isLoading: true,
-    isSignout: false,
     userToken: null,
     userRole: null,
   });
@@ -39,18 +59,15 @@ export default function App() {
   useEffect(() => {
     const bootstrapAsync = async () => {
       try {
-        // Initialize data store
         await dataStore.initialize();
 
         const token = await AsyncStorage.getItem('userToken');
         const role = await AsyncStorage.getItem('userRole');
-        
-        // Set mock user if no token exists (for demo purposes)
+
         if (!token) {
           await AsyncStorage.setItem('userToken', 'demo-token');
           await AsyncStorage.setItem('userRole', 'child');
-          
-          // Set current user to child1 for demo
+
           const child1 = {
             id: 'child1',
             name: 'Sophie',
@@ -63,76 +80,89 @@ export default function App() {
 
         setAuthState({
           isLoading: false,
-          isSignout: false,
           userToken: token || 'demo-token',
           userRole: role || 'child',
         });
       } catch (e) {
         console.error('[v0] Bootstrap error:', e);
-        setAuthState({
-          isLoading: false,
-          isSignout: false,
-          userToken: null,
-          userRole: null,
-        });
+        setAuthState({ isLoading: false, userToken: null, userRole: null });
       }
     };
-
     bootstrapAsync();
   }, []);
+
+  const signIn = useCallback(async ({ token, role, email }) => {
+    await AsyncStorage.setItem('userToken', token);
+    if (role) await AsyncStorage.setItem('userRole', role);
+    if (email) await AsyncStorage.setItem('userEmail', email);
+    setAuthState({ isLoading: false, userToken: token, userRole: role || null });
+  }, []);
+
+  const setRole = useCallback(async (role) => {
+    await AsyncStorage.setItem('userRole', role);
+    setAuthState((prev) => ({ ...prev, userRole: role }));
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await AsyncStorage.multiRemove(['userToken', 'userRole', 'userEmail']);
+    try {
+      await dataStore.setCurrentUser(null);
+    } catch (e) {
+      // ignore
+    }
+    setAuthState({ isLoading: false, userToken: null, userRole: null });
+  }, []);
+
+  const authContext = useMemo(
+    () => ({ signIn, signOut, setRole, userRole: authState.userRole }),
+    [signIn, signOut, setRole, authState.userRole]
+  );
 
   if (authState.isLoading) {
     return <SplashScreen />;
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          cardStyle: { backgroundColor: '#FFFFFF' },
-        }}
-      >
-        {authState.userToken == null ? (
-          <>
-            <Stack.Screen name="Welcome" component={WelcomeScreen} />
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
-          </>
-        ) : !authState.userRole ? (
-          <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />
-        ) : (
-          <>
-            {authState.userRole === 'child' && (
-              <Stack.Screen name="ChildDashboard" component={ChildDashboard} />
+    <SafeAreaProvider>
+      <StatusBar style="dark" backgroundColor="#FFFFFF" translucent={false} />
+      <AuthContext.Provider value={authContext}>
+        <NavigationContainer>
+          <Stack.Navigator
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: '#FFFFFF' },
+            }}
+          >
+            {authState.userToken == null ? (
+              <>
+                <Stack.Screen name="Welcome" component={WelcomeScreen} />
+                <Stack.Screen name="Login" component={LoginScreen} />
+                <Stack.Screen name="Register" component={RegisterScreen} />
+              </>
+            ) : !authState.userRole ? (
+              <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />
+            ) : (
+              <>
+                <Stack.Screen
+                  name={ROLE_TO_SCREEN[authState.userRole] || 'ChildDashboard'}
+                  component={ROLE_TO_COMPONENT[authState.userRole] || ChildDashboard}
+                />
+                <Stack.Screen name="Worksheet" component={WorksheetScreen} />
+                <Stack.Screen name="MoodCheckIn" component={MoodCheckInScreen} />
+                <Stack.Screen name="WorksheetLibrary" component={WorksheetLibraryScreen} />
+                <Stack.Screen name="ClientDetails" component={ClientDetailsScreen} />
+                <Stack.Screen name="Progress" component={ProgressScreen} />
+                <Stack.Screen name="Journal" component={JournalScreen} />
+                <Stack.Screen name="Settings" component={SettingsScreen} />
+                <Stack.Screen name="TherapyPrograms" component={TherapyProgramsScreen} />
+                <Stack.Screen name="Resources" component={ResourcesScreen} />
+                <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
+                <Stack.Screen name="Badges" component={BadgesScreen} />
+              </>
             )}
-            {authState.userRole === 'teen' && (
-              <Stack.Screen name="TeenDashboard" component={TeenDashboard} />
-            )}
-            {authState.userRole === 'couples' && (
-              <Stack.Screen name="CouplesDashboard" component={CouplesDashboard} />
-            )}
-            {authState.userRole === 'family' && (
-              <Stack.Screen name="FamilyDashboard" component={FamilyDashboard} />
-            )}
-            {authState.userRole === 'therapist' && (
-              <Stack.Screen name="TherapistDashboard" component={TherapistDashboard} />
-            )}
-            {/* Shared screens accessible from any role */}
-            <Stack.Screen name="Worksheet" component={WorksheetScreen} />
-            <Stack.Screen name="MoodCheckIn" component={MoodCheckInScreen} />
-            <Stack.Screen name="WorksheetLibrary" component={WorksheetLibraryScreen} />
-            <Stack.Screen name="ClientDetails" component={ClientDetailsScreen} />
-            <Stack.Screen name="Progress" component={ProgressScreen} />
-            <Stack.Screen name="Journal" component={JournalScreen} />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
-            <Stack.Screen name="TherapyPrograms" component={TherapyProgramsScreen} />
-            <Stack.Screen name="Resources" component={ResourcesScreen} />
-            <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
-            <Stack.Screen name="Badges" component={BadgesScreen} />
-          </>
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+          </Stack.Navigator>
+        </NavigationContainer>
+      </AuthContext.Provider>
+    </SafeAreaProvider>
   );
 }
