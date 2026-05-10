@@ -14,6 +14,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
 import dataStore from '../utils/dataStore';
 import { useAuth } from '../../App';
+import {
+  applyNotifSettings,
+  ensurePermission,
+  getNotifSettings,
+} from '../utils/notifications';
 
 export default function SettingsScreen({ navigation }) {
   const { signOut } = useAuth();
@@ -26,6 +31,7 @@ export default function SettingsScreen({ navigation }) {
     darkMode: false,
     soundEnabled: true,
   });
+  const [dailyCheckIn, setDailyCheckIn] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -41,6 +47,8 @@ export default function SettingsScreen({ navigation }) {
         if (savedSettings) {
           setSettings(JSON.parse(savedSettings));
         }
+        const notifSettings = await getNotifSettings();
+        setDailyCheckIn(!!notifSettings.dailyCheckIn);
       } catch (error) {
         console.error('[v0] Error loading settings:', error);
       } finally {
@@ -58,6 +66,24 @@ export default function SettingsScreen({ navigation }) {
       await AsyncStorage.setItem('appSettings', JSON.stringify(newSettings));
     } catch (error) {
       console.error('[v0] Error saving settings:', error);
+    }
+  };
+
+  const toggleDailyCheckIn = async (value) => {
+    if (value) {
+      const granted = await ensurePermission();
+      if (!granted) {
+        Alert.alert(
+          'Notifications disabled',
+          'Please enable notifications for this app in your device settings to receive daily check-in reminders.'
+        );
+        return;
+      }
+    }
+    setDailyCheckIn(value);
+    await applyNotifSettings({ dailyCheckIn: value, hour: 19, minute: 0 });
+    if (value) {
+      Alert.alert('Reminder set ⏰', 'You will get a daily check-in at 7:00 PM.');
     }
   };
 
@@ -167,6 +193,21 @@ export default function SettingsScreen({ navigation }) {
                 onValueChange={(value) => updateSetting('notifications', value)}
                 trackColor={{ false: COLORS.gray300, true: COLORS.primaryLight }}
                 thumbColor={settings.notifications ? COLORS.primary : COLORS.gray400}
+              />
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.settingRow}>
+              <View style={{ flex: 1, paddingRight: SPACING.md }}>
+                <Text style={styles.settingLabel}>Daily Check-in (7 PM)</Text>
+                <Text style={styles.settingHint}>
+                  Get a reminder to log your mood every evening
+                </Text>
+              </View>
+              <Switch
+                value={dailyCheckIn}
+                onValueChange={toggleDailyCheckIn}
+                trackColor={{ false: COLORS.gray300, true: COLORS.primaryLight }}
+                thumbColor={dailyCheckIn ? COLORS.primary : COLORS.gray400}
               />
             </View>
             <View style={styles.divider} />
@@ -329,6 +370,11 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.sm,
     fontWeight: '600',
     color: COLORS.gray700,
+  },
+  settingHint: {
+    fontSize: TYPOGRAPHY.xs,
+    color: COLORS.gray500,
+    marginTop: 2,
   },
   settingValue: {
     fontSize: TYPOGRAPHY.xs,

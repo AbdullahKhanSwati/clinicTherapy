@@ -27,8 +27,15 @@ import TherapyProgramsScreen from './src/screens/TherapyProgramsScreen';
 import ResourcesScreen from './src/screens/ResourcesScreen';
 import NotificationCenterScreen from './src/screens/NotificationCenterScreen';
 import BadgesScreen from './src/screens/BadgesScreen';
+import CopingToolboxScreen from './src/screens/CopingToolboxScreen';
+import BreathingExerciseScreen from './src/screens/coping/BreathingExerciseScreen';
+import GroundingExerciseScreen from './src/screens/coping/GroundingExerciseScreen';
+import VisualizationScreen from './src/screens/coping/VisualizationScreen';
+import AffirmationsScreen from './src/screens/coping/AffirmationsScreen';
+import AvatarCustomizerScreen from './src/screens/AvatarCustomizerScreen';
 import dataStore from './src/utils/dataStore';
 import { tryCatch } from './src/utils/safeOperations';
+import { setupAndroidChannel } from './src/utils/notifications';
 
 const Stack = createNativeStackNavigator();
 
@@ -61,6 +68,7 @@ export default function App() {
   useEffect(() => {
     const bootstrapAsync = async () => {
       try {
+        await setupAndroidChannel();
         await dataStore.initialize();
 
         const token = await AsyncStorage.getItem('userToken');
@@ -93,17 +101,37 @@ export default function App() {
     bootstrapAsync();
   }, []);
 
+  const linkRoleToMockUser = useCallback(async (role) => {
+    const ROLE_TO_MOCK_ID = {
+      child: 'child1',
+      teen: 'teen1',
+      couples: 'partner1',
+      family: 'parent1',
+      therapist: 'therapist1',
+    };
+    const mockId = ROLE_TO_MOCK_ID[role];
+    if (!mockId) return;
+    try {
+      const mockUser = await dataStore.getUserById(mockId);
+      if (mockUser) await dataStore.setCurrentUser(mockUser);
+    } catch (e) {
+      console.log('[App] linkRoleToMockUser error', e);
+    }
+  }, []);
+
   const signIn = useCallback(async ({ token, role, email }) => {
     await AsyncStorage.setItem('userToken', token);
     if (role) await AsyncStorage.setItem('userRole', role);
     if (email) await AsyncStorage.setItem('userEmail', email);
+    if (role) await linkRoleToMockUser(role);
     setAuthState({ isLoading: false, userToken: token, userRole: role || null });
-  }, []);
+  }, [linkRoleToMockUser]);
 
   const setRole = useCallback(async (role) => {
     await AsyncStorage.setItem('userRole', role);
+    await linkRoleToMockUser(role);
     setAuthState((prev) => ({ ...prev, userRole: role }));
-  }, []);
+  }, [linkRoleToMockUser]);
 
   const signOut = useCallback(async () => {
     await AsyncStorage.multiRemove(['userToken', 'userRole', 'userEmail']);
@@ -161,6 +189,12 @@ export default function App() {
                   <Stack.Screen name="Resources" component={ResourcesScreen} />
                   <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
                   <Stack.Screen name="Badges" component={BadgesScreen} />
+                  <Stack.Screen name="CopingToolbox" component={CopingToolboxScreen} />
+                  <Stack.Screen name="BreathingExercise" component={BreathingExerciseScreen} />
+                  <Stack.Screen name="GroundingExercise" component={GroundingExerciseScreen} />
+                  <Stack.Screen name="Visualization" component={VisualizationScreen} />
+                  <Stack.Screen name="Affirmations" component={AffirmationsScreen} />
+                  <Stack.Screen name="AvatarCustomizer" component={AvatarCustomizerScreen} />
                 </>
               )}
             </Stack.Navigator>

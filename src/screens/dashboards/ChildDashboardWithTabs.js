@@ -60,7 +60,7 @@ const HomeStack = () => (
   <Stack.Navigator
     screenOptions={{
       headerShown: false,
-      cardStyle: { backgroundColor: COLORS.background },
+      contentStyle: { backgroundColor: COLORS.background },
     }}
   >
     <Stack.Screen name="HomeTabScreen" component={HomeTab} />
@@ -75,7 +75,7 @@ const WorksheetsStack = () => (
   <Stack.Navigator
     screenOptions={{
       headerShown: false,
-      cardStyle: { backgroundColor: COLORS.background },
+      contentStyle: { backgroundColor: COLORS.background },
     }}
   >
     <Stack.Screen name="WorksheetsTabScreen" component={WorksheetsTab} />
@@ -87,7 +87,7 @@ const MoodStack = () => (
   <Stack.Navigator
     screenOptions={{
       headerShown: false,
-      cardStyle: { backgroundColor: COLORS.background },
+      contentStyle: { backgroundColor: COLORS.background },
     }}
   >
     <Stack.Screen name="MoodRewardsTabScreen" component={MoodRewardsTab} />
@@ -101,7 +101,7 @@ const ProfileStack = () => (
   <Stack.Navigator
     screenOptions={{
       headerShown: false,
-      cardStyle: { backgroundColor: COLORS.background },
+      contentStyle: { backgroundColor: COLORS.background },
     }}
   >
     <Stack.Screen name="ProfileTabScreen" component={ProfileTab} />
@@ -123,9 +123,6 @@ const ChildDashboardTabs = () => (
       tabBarShowLabel: false,
       tabBarActiveTintColor: COLORS.primary,
       tabBarInactiveTintColor: COLORS.gray400,
-      tabBarBackground: () => (
-        <View style={styles.tabBarBackground} />
-      ),
       lazy: true,
       lazyPlaceholder: () => <View style={{ flex: 1, backgroundColor: COLORS.background }} />,
       unmountOnBlur: false,
@@ -205,27 +202,12 @@ export default ChildDashboardWithDrawer;
 
 const styles = StyleSheet.create({
   tabBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: Platform.OS === 'ios' ? 90 : 70,
-    backgroundColor: 'transparent',
-    borderTopWidth: 1,
-    borderTopColor: COLORS.gray200,
-    elevation: 0,
-    shadowOpacity: 0,
-  },
-  tabBarBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    height: Platform.OS === 'ios' ? 84 : 64,
     backgroundColor: COLORS.white,
     borderTopWidth: 1,
     borderTopColor: COLORS.gray200,
-    ...SHADOWS.lg,
+    paddingTop: 6,
+    ...SHADOWS.md,
   },
   tabIconContainer: {
     alignItems: 'center',

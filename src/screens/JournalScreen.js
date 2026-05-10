@@ -17,14 +17,15 @@ import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors'
 import dataStore from '../utils/dataStore';
 
 export default function JournalScreen({ navigation, route }) {
-  const { entryId } = route.params || {};
+  const { entryId: routeEntryId } = route.params || {};
   const [isEditingEntry, setIsEditingEntry] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState(routeEntryId || null);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [mood, setMood] = useState('calm');
   const [entries, setEntries] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
-  const [loading, setLoading] = useState(!entryId);
+  const [loading, setLoading] = useState(true);
 
   const MOOD_OPTIONS = ['happy', 'sad', 'angry', 'anxious', 'calm', 'excited', 'confused', 'overwhelmed'];
   const MOOD_EMOJIS = {
@@ -47,19 +48,18 @@ export default function JournalScreen({ navigation, route }) {
         const user = await dataStore.getCurrentUser();
         setCurrentUser(user);
 
-        if (entryId) {
-          // Load specific entry for editing
-          const entry = await dataStore.getJournalEntry(entryId);
+        const allEntries = await dataStore.getJournalEntriesByUser(user?.id);
+        setEntries(allEntries);
+
+        if (routeEntryId) {
+          const entry = await dataStore.getJournalEntry(routeEntryId);
           if (entry) {
             setTitle(entry.title);
             setContent(entry.content);
             setMood(entry.mood || 'calm');
+            setEditingEntryId(routeEntryId);
             setIsEditingEntry(true);
           }
-        } else {
-          // Load all entries
-          const allEntries = await dataStore.getJournalEntriesByUser(user?.id);
-          setEntries(allEntries);
         }
       } catch (error) {
         console.error('[v0] Error loading journal:', error);
@@ -69,7 +69,7 @@ export default function JournalScreen({ navigation, route }) {
     };
 
     loadData();
-  }, [entryId]);
+  }, [routeEntryId]);
 
   const handleSaveEntry = async () => {
     if (!title.trim() || !content.trim()) {
@@ -78,9 +78,8 @@ export default function JournalScreen({ navigation, route }) {
     }
 
     try {
-      if (entryId) {
-        // Update existing entry
-        await dataStore.updateJournalEntry(entryId, {
+      if (editingEntryId) {
+        await dataStore.updateJournalEntry(editingEntryId, {
           title,
           content,
           mood,
@@ -88,7 +87,6 @@ export default function JournalScreen({ navigation, route }) {
         });
         Alert.alert('Success', 'Entry updated!');
       } else {
-        // Create new entry
         await dataStore.createJournalEntry({
           userId: currentUser?.id,
           title,
@@ -99,13 +97,12 @@ export default function JournalScreen({ navigation, route }) {
         Alert.alert('Success', 'Entry saved!');
       }
 
-      // Reset form
       setTitle('');
       setContent('');
       setMood('calm');
+      setEditingEntryId(null);
       setIsEditingEntry(false);
 
-      // Reload entries
       const allEntries = await dataStore.getJournalEntriesByUser(currentUser?.id);
       setEntries(allEntries);
     } catch (error) {
@@ -148,7 +145,7 @@ export default function JournalScreen({ navigation, route }) {
   }
 
   // New/Edit Entry View
-  if (isEditingEntry || !entryId) {
+  if (isEditingEntry) {
     return (
       <SafeAreaView style={styles.container}>
         <KeyboardAvoidingView
@@ -158,13 +155,16 @@ export default function JournalScreen({ navigation, route }) {
           <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
             <View style={styles.header}>
               <TouchableOpacity onPress={() => {
-                if (isEditingEntry) setIsEditingEntry(false);
-                else navigation.goBack();
+                setTitle('');
+                setContent('');
+                setMood('calm');
+                setEditingEntryId(null);
+                setIsEditingEntry(false);
               }}>
                 <Text style={styles.backButton}>← Back</Text>
               </TouchableOpacity>
               <Text style={styles.title}>
-                {entryId ? 'Edit Entry' : 'New Journal Entry'}
+                {editingEntryId ? 'Edit Entry' : 'New Journal Entry'}
               </Text>
               <View style={{ width: 50 }} />
             </View>
@@ -226,6 +226,7 @@ export default function JournalScreen({ navigation, route }) {
                   setTitle('');
                   setContent('');
                   setMood('calm');
+                  setEditingEntryId(null);
                   setIsEditingEntry(false);
                 }}
               >
@@ -253,7 +254,13 @@ export default function JournalScreen({ navigation, route }) {
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.title}>My Journal</Text>
-          <TouchableOpacity onPress={() => setIsEditingEntry(true)}>
+          <TouchableOpacity onPress={() => {
+            setTitle('');
+            setContent('');
+            setMood('calm');
+            setEditingEntryId(null);
+            setIsEditingEntry(true);
+          }}>
             <Text style={styles.newButton}>+ New</Text>
           </TouchableOpacity>
         </View>
@@ -265,7 +272,13 @@ export default function JournalScreen({ navigation, route }) {
             <Text style={styles.emptyText}>Start journaling to reflect on your feelings and progress</Text>
             <TouchableOpacity
               style={styles.emptyButton}
-              onPress={() => setIsEditingEntry(true)}
+              onPress={() => {
+                setTitle('');
+                setContent('');
+                setMood('calm');
+                setEditingEntryId(null);
+                setIsEditingEntry(true);
+              }}
             >
               <Text style={styles.emptyButtonText}>Create First Entry</Text>
             </TouchableOpacity>
@@ -279,6 +292,7 @@ export default function JournalScreen({ navigation, route }) {
                 setTitle(entry.title);
                 setContent(entry.content);
                 setMood(entry.mood || 'calm');
+                setEditingEntryId(entry.id);
                 setIsEditingEntry(true);
               }}
             >

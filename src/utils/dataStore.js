@@ -13,7 +13,10 @@ const STORE_KEYS = {
   THERAPY_PROGRAMS: 'app_therapy_programs',
   THERAPIST_NOTES: 'app_therapist_notes',
   CURRENT_USER: 'app_current_user',
+  ASSIGNMENTS_SEED_VERSION: 'app_assignments_seed_version',
 };
+
+const ASSIGNMENTS_SEED_VERSION = 'v2';
 
 class DataStore {
   constructor() {
@@ -26,7 +29,6 @@ class DataStore {
     if (this.initialized) return;
 
     try {
-      // Check if data already exists
       const existing = await AsyncStorage.getItem(STORE_KEYS.USERS);
       if (!existing) {
         console.log('[DataStore] Initializing with mock data');
@@ -37,6 +39,28 @@ class DataStore {
         await this.setWorksheetAssignments(WORKSHEET_ASSIGNMENTS);
         await this.setTherapyPrograms(THERAPY_PROGRAMS);
         await this.setTherapistNotes(THERAPIST_NOTES);
+        await AsyncStorage.setItem(
+          STORE_KEYS.ASSIGNMENTS_SEED_VERSION,
+          ASSIGNMENTS_SEED_VERSION
+        );
+      } else {
+        const seedVersion = await AsyncStorage.getItem(
+          STORE_KEYS.ASSIGNMENTS_SEED_VERSION
+        );
+        if (seedVersion !== ASSIGNMENTS_SEED_VERSION) {
+          console.log('[DataStore] Re-seeding assignments to', ASSIGNMENTS_SEED_VERSION);
+          const existingAssignments = await this.getWorksheetAssignments();
+          const existingIds = new Set(existingAssignments.map((a) => a.id));
+          const merged = [
+            ...existingAssignments,
+            ...WORKSHEET_ASSIGNMENTS.filter((a) => !existingIds.has(a.id)),
+          ];
+          await this.setWorksheetAssignments(merged);
+          await AsyncStorage.setItem(
+            STORE_KEYS.ASSIGNMENTS_SEED_VERSION,
+            ASSIGNMENTS_SEED_VERSION
+          );
+        }
       }
 
       this.initialized = true;
@@ -188,6 +212,54 @@ class DataStore {
   async getJournalEntriesByUser(userId) {
     const entries = await this.getJournalEntries();
     return entries.filter(e => e.userId === userId).sort((a, b) => new Date(b.date) - new Date(a.date));
+  }
+
+  async createJournalEntry({ userId, title, content, mood, date }) {
+    try {
+      const entries = await this.getJournalEntries();
+      const newEntry = {
+        id: `journal_${Date.now()}`,
+        userId,
+        title,
+        content,
+        mood,
+        date: date || new Date().toISOString(),
+      };
+      await this.setJournalEntries([...entries, newEntry]);
+      return newEntry;
+    } catch (error) {
+      console.error('[DataStore] createJournalEntry error:', error);
+      return null;
+    }
+  }
+
+  async getJournalEntry(id) {
+    const entries = await this.getJournalEntries();
+    return entries.find(e => e.id === id) || null;
+  }
+
+  async updateJournalEntry(id, updates) {
+    try {
+      const entries = await this.getJournalEntries();
+      const next = entries.map(e => (e.id === id ? { ...e, ...updates } : e));
+      await this.setJournalEntries(next);
+      return next.find(e => e.id === id) || null;
+    } catch (error) {
+      console.error('[DataStore] updateJournalEntry error:', error);
+      return null;
+    }
+  }
+
+  async deleteJournalEntry(id) {
+    try {
+      const entries = await this.getJournalEntries();
+      const next = entries.filter(e => e.id !== id);
+      await this.setJournalEntries(next);
+      return true;
+    } catch (error) {
+      console.error('[DataStore] deleteJournalEntry error:', error);
+      return false;
+    }
   }
 
   // WORKSHEETS COMPLETED
