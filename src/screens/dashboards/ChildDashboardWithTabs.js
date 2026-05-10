@@ -128,6 +128,7 @@ const ChildDashboardTabs = () => (
       ),
       lazy: true,
       lazyPlaceholder: () => <View style={{ flex: 1, backgroundColor: COLORS.background }} />,
+      unmountOnBlur: false,
     })}
   >
     <Tab.Screen
@@ -174,7 +175,7 @@ const ChildDashboardTabs = () => (
 );
 
 // Drawer navigator wrapper
-export default function ChildDashboardWithDrawer() {
+const ChildDashboardWithDrawer = () => {
   return (
     <ErrorBoundary>
       <Drawer.Navigator
@@ -198,7 +199,9 @@ export default function ChildDashboardWithDrawer() {
       </Drawer.Navigator>
     </ErrorBoundary>
   );
-}
+};
+
+export default ChildDashboardWithDrawer;
 
 const styles = StyleSheet.create({
   tabBar: {

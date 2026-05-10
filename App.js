@@ -11,7 +11,7 @@ import WelcomeScreen from './src/screens/WelcomeScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import RoleSelectionScreen from './src/screens/RoleSelectionScreen';
-import ChildDashboard from './src/screens/dashboards/ChildDashboard';
+import ChildDashboard from './src/screens/dashboards/ChildDashboardWithTabs';
 import TeenDashboard from './src/screens/dashboards/TeenDashboard';
 import CouplesDashboard from './src/screens/dashboards/CouplesDashboard';
 import FamilyDashboard from './src/screens/dashboards/FamilyDashboard';

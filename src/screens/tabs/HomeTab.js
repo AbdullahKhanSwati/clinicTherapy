@@ -8,9 +8,11 @@ import {
   Image,
   ActivityIndicator,
   Animated,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, SHADOWS } from '../../constants/colors';
+import { MOOD_ENTRIES, JOURNAL_ENTRIES, WORKSHEET_ASSIGNMENTS, BADGES_DATA } from '../../data/mockData';
 import dataStore from '../../utils/dataStore';
 import { tryCatch } from '../../utils/safeOperations';
 
@@ -19,6 +21,7 @@ export default function HomeTab({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [todayMood, setTodayMood] = useState(null);
   const [streak, setStreak] = useState(0);
+  const [assignedWorksheets, setAssignedWorksheets] = useState([]);
   const [scaleAnim] = useState(new Animated.Value(1));
 
   useEffect(() => {
@@ -32,9 +35,29 @@ export default function HomeTab({ navigation }) {
       const user = await dataStore.getCurrentUser();
       setCurrentUser(user);
 
-      // Simulate streak calculation
+      // Get today's mood from mock data
+      const todayMoodEntry = MOOD_ENTRIES.find(
+        m => m.userId === user?.id && 
+        new Date(m.date).toDateString() === new Date().toDateString()
+      );
+      
+      if (todayMoodEntry) {
+        setTodayMood({
+          emoji: { happy: '😊', sad: '😢', angry: '😠', anxious: '😰', excited: '🤩', okay: '😐', calm: '😌' }[todayMoodEntry.mood] || '😐',
+          label: todayMoodEntry.mood.charAt(0).toUpperCase() + todayMoodEntry.mood.slice(1),
+          color: { happy: COLORS.success, sad: COLORS.error, angry: COLORS.error, anxious: COLORS.warning, excited: COLORS.accent1, okay: COLORS.gray500, calm: COLORS.accent3 }[todayMoodEntry.mood] || COLORS.gray500,
+          intensity: todayMoodEntry.intensity,
+        });
+      } else {
+        setTodayMood({ emoji: '🤔', label: 'Not checked', color: COLORS.gray500, intensity: 0 });
+      }
+
+      // Calculate streak
       setStreak(7);
-      setTodayMood({ emoji: '😊', label: 'Happy', color: COLORS.success });
+
+      // Get assigned worksheets
+      const worksheets = WORKSHEET_ASSIGNMENTS.filter(a => a.clientId === user?.id && a.status !== 'completed');
+      setAssignedWorksheets(worksheets.slice(0, 3));
 
       setLoading(false);
     }, null);
@@ -61,6 +84,8 @@ export default function HomeTab({ navigation }) {
       navigation.navigate('Progress');
     } else if (activityId === 3) {
       navigation.navigate('Journal');
+    } else if (activityId === 4) {
+      navigation.navigate('Badges');
     }
   };
 
@@ -77,7 +102,7 @@ export default function HomeTab({ navigation }) {
   const ACTIVITIES = [
     {
       id: 1,
-      title: 'Check Mood',
+      title: 'Mood Check',
       emoji: '😊',
       color: COLORS.accent1,
       description: 'How are you feeling?',
@@ -105,6 +130,8 @@ export default function HomeTab({ navigation }) {
     },
   ];
 
+  const unlockedBadges = BADGES_DATA.filter(b => b.unlocked).length;
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -120,7 +147,11 @@ export default function HomeTab({ navigation }) {
         </View>
 
         {/* Today's Mood Card */}
-        <View style={styles.moodCard}>
+        <TouchableOpacity 
+          style={styles.moodCard}
+          onPress={() => navigation.navigate('MoodCheckIn')}
+          activeOpacity={0.8}
+        >
           <View style={styles.moodHeader}>
             <Text style={styles.moodLabel}>Today's Mood</Text>
             <Text style={styles.streakBadge}>🔥 {streak} day streak!</Text>
@@ -129,27 +160,33 @@ export default function HomeTab({ navigation }) {
             <Text style={styles.moodEmoji}>{todayMood?.emoji}</Text>
             <View>
               <Text style={styles.moodTitle}>{todayMood?.label}</Text>
-              <Text style={styles.moodTime}>Just now</Text>
+              <Text style={styles.moodTime}>
+                {todayMood?.label === 'Not checked' ? 'Tap to check in' : 'Just now'}
+              </Text>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Quick Stats */}
         <View style={styles.statsContainer}>
           <View style={[styles.statCard, { borderTopColor: COLORS.accent1 }]}>
             <Text style={styles.statEmoji}>✅</Text>
-            <Text style={styles.statNumber}>3</Text>
-            <Text style={styles.statLabel}>Worksheets Done</Text>
+            <Text style={styles.statNumber}>
+              {WORKSHEET_ASSIGNMENTS.filter(a => a.clientId === currentUser?.id && a.status === 'completed').length}
+            </Text>
+            <Text style={styles.statLabel}>Worksheets</Text>
           </View>
           <View style={[styles.statCard, { borderTopColor: COLORS.accent3 }]}>
             <Text style={styles.statEmoji}>📖</Text>
-            <Text style={styles.statNumber}>12</Text>
-            <Text style={styles.statLabel}>Journal Entries</Text>
+            <Text style={styles.statNumber}>
+              {JOURNAL_ENTRIES.filter(j => j.userId === currentUser?.id).length}
+            </Text>
+            <Text style={styles.statLabel}>Journals</Text>
           </View>
           <View style={[styles.statCard, { borderTopColor: COLORS.accent5 }]}>
             <Text style={styles.statEmoji}>⭐</Text>
-            <Text style={styles.statNumber}>850</Text>
-            <Text style={styles.statLabel}>Total Points</Text>
+            <Text style={styles.statNumber}>{unlockedBadges}</Text>
+            <Text style={styles.statLabel}>Badges</Text>
           </View>
         </View>
 
@@ -175,14 +212,52 @@ export default function HomeTab({ navigation }) {
           ))}
         </View>
 
+        {/* Assigned Worksheets Section */}
+        {assignedWorksheets.length > 0 && (
+          <View style={styles.worksheetsSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Your Assignments</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Worksheets')}>
+                <Text style={styles.viewAll}>See all →</Text>
+              </TouchableOpacity>
+            </View>
+            {assignedWorksheets.map((assignment) => (
+              <TouchableOpacity
+                key={assignment.id}
+                style={styles.worksheetItem}
+                onPress={() => navigation.navigate('Worksheets')}
+                activeOpacity={0.7}
+              >
+                <View style={styles.worksheetItemContent}>
+                  <Text style={styles.worksheetItemTitle}>{assignment.notes || 'Worksheet'}</Text>
+                  <Text style={styles.worksheetItemCategory}>
+                    Status: {assignment.status === 'pending' ? '📝 New' : '⏳ In Progress'}
+                  </Text>
+                </View>
+                <Text style={styles.worksheetItemArrow}>→</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         {/* Recommended Action */}
         <View style={styles.actionCard}>
           <Text style={styles.actionIcon}>💡</Text>
           <View style={styles.actionContent}>
             <Text style={styles.actionTitle}>Keep the Momentum!</Text>
-            <Text style={styles.actionDesc}>You have 1 worksheet waiting for you</Text>
+            <Text style={styles.actionDesc}>
+              {assignedWorksheets.length > 0 
+                ? `You have ${assignedWorksheets.length} worksheet(s) waiting for you`
+                : 'Check in with your mood today!'}
+            </Text>
           </View>
           <Text style={styles.actionArrow}>→</Text>
+        </View>
+
+        {/* Footer Message */}
+        <View style={styles.footerMessage}>
+          <Text style={styles.footerEmoji}>✨</Text>
+          <Text style={styles.footerText}>Remember, every small step counts. You&apos;re doing great! 🌟</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -257,6 +332,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: 12,
+    overflow: 'hidden',
   },
   moodDisplay: {
     flexDirection: 'row',
@@ -313,6 +389,17 @@ const styles = StyleSheet.create({
     color: COLORS.gray700,
     marginBottom: SPACING.lg,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  viewAll: {
+    fontSize: TYPOGRAPHY.sm,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
   activitiesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -348,6 +435,36 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.xs,
     color: COLORS.gray500,
   },
+  worksheetsSection: {
+    marginBottom: SPACING.xl,
+  },
+  worksheetItem: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    padding: SPACING.lg,
+    marginBottom: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    ...SHADOWS.sm,
+  },
+  worksheetItemContent: {
+    flex: 1,
+  },
+  worksheetItemTitle: {
+    fontSize: TYPOGRAPHY.base,
+    fontWeight: '600',
+    color: COLORS.gray700,
+    marginBottom: SPACING.xs,
+  },
+  worksheetItemCategory: {
+    fontSize: TYPOGRAPHY.sm,
+    color: COLORS.gray500,
+  },
+  worksheetItemArrow: {
+    fontSize: TYPOGRAPHY.lg,
+    color: COLORS.primary,
+    marginLeft: SPACING.md,
+  },
   actionCard: {
     backgroundColor: COLORS.primary + '15',
     borderLeftWidth: 4,
@@ -379,5 +496,25 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.lg,
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  footerMessage: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xl,
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: COLORS.accent5 + '10',
+    borderRadius: 12,
+    marginBottom: SPACING.xl,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.accent5,
+  },
+  footerEmoji: {
+    fontSize: 32,
+    marginBottom: SPACING.sm,
+  },
+  footerText: {
+    fontSize: TYPOGRAPHY.sm,
+    color: COLORS.gray600,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
