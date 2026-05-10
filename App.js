@@ -5,12 +5,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 import SplashScreen from './src/screens/SplashScreen';
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import RoleSelectionScreen from './src/screens/RoleSelectionScreen';
-import ChildDashboard from './src/screens/dashboards/ChildDashboard';
+import ChildDashboardWithTabs from './src/screens/dashboards/ChildDashboardWithTabs';
 import TeenDashboard from './src/screens/dashboards/TeenDashboard';
 import CouplesDashboard from './src/screens/dashboards/CouplesDashboard';
 import FamilyDashboard from './src/screens/dashboards/FamilyDashboard';
@@ -27,6 +28,7 @@ import ResourcesScreen from './src/screens/ResourcesScreen';
 import NotificationCenterScreen from './src/screens/NotificationCenterScreen';
 import BadgesScreen from './src/screens/BadgesScreen';
 import dataStore from './src/utils/dataStore';
+import { tryCatch } from './src/utils/safeOperations';
 
 const Stack = createNativeStackNavigator();
 
@@ -34,7 +36,7 @@ const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
 const ROLE_TO_SCREEN = {
-  child: 'ChildDashboard',
+  child: 'ChildDashboardWithTabs',
   teen: 'TeenDashboard',
   couples: 'CouplesDashboard',
   family: 'FamilyDashboard',
@@ -42,7 +44,7 @@ const ROLE_TO_SCREEN = {
 };
 
 const ROLE_TO_COMPONENT = {
-  child: ChildDashboard,
+  child: ChildDashboardWithTabs,
   teen: TeenDashboard,
   couples: CouplesDashboard,
   family: FamilyDashboard,
@@ -84,7 +86,7 @@ export default function App() {
           userRole: role || 'child',
         });
       } catch (e) {
-        console.error('[v0] Bootstrap error:', e);
+        console.log('[v0] Bootstrap error:', e);
         setAuthState({ isLoading: false, userToken: null, userRole: null });
       }
     };
@@ -124,45 +126,47 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" backgroundColor="#FFFFFF" translucent={false} />
-      <AuthContext.Provider value={authContext}>
-        <NavigationContainer>
-          <Stack.Navigator
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: '#FFFFFF' },
-            }}
-          >
-            {authState.userToken == null ? (
-              <>
-                <Stack.Screen name="Welcome" component={WelcomeScreen} />
-                <Stack.Screen name="Login" component={LoginScreen} />
-                <Stack.Screen name="Register" component={RegisterScreen} />
-              </>
-            ) : !authState.userRole ? (
-              <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />
-            ) : (
-              <>
-                <Stack.Screen
-                  name={ROLE_TO_SCREEN[authState.userRole] || 'ChildDashboard'}
-                  component={ROLE_TO_COMPONENT[authState.userRole] || ChildDashboard}
-                />
-                <Stack.Screen name="Worksheet" component={WorksheetScreen} />
-                <Stack.Screen name="MoodCheckIn" component={MoodCheckInScreen} />
-                <Stack.Screen name="WorksheetLibrary" component={WorksheetLibraryScreen} />
-                <Stack.Screen name="ClientDetails" component={ClientDetailsScreen} />
-                <Stack.Screen name="Progress" component={ProgressScreen} />
-                <Stack.Screen name="Journal" component={JournalScreen} />
-                <Stack.Screen name="Settings" component={SettingsScreen} />
-                <Stack.Screen name="TherapyPrograms" component={TherapyProgramsScreen} />
-                <Stack.Screen name="Resources" component={ResourcesScreen} />
-                <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
-                <Stack.Screen name="Badges" component={BadgesScreen} />
-              </>
-            )}
-          </Stack.Navigator>
-        </NavigationContainer>
-      </AuthContext.Provider>
+      <ErrorBoundary>
+        <StatusBar style="dark" backgroundColor="#FFFFFF" translucent={false} />
+        <AuthContext.Provider value={authContext}>
+          <NavigationContainer>
+            <Stack.Navigator
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: '#FFFFFF' },
+              }}
+            >
+              {authState.userToken == null ? (
+                <>
+                  <Stack.Screen name="Welcome" component={WelcomeScreen} />
+                  <Stack.Screen name="Login" component={LoginScreen} />
+                  <Stack.Screen name="Register" component={RegisterScreen} />
+                </>
+              ) : !authState.userRole ? (
+                <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />
+              ) : (
+                <>
+                  <Stack.Screen
+                    name={ROLE_TO_SCREEN[authState.userRole] || 'ChildDashboardWithTabs'}
+                    component={ROLE_TO_COMPONENT[authState.userRole] || ChildDashboardWithTabs}
+                  />
+                  <Stack.Screen name="Worksheet" component={WorksheetScreen} />
+                  <Stack.Screen name="MoodCheckIn" component={MoodCheckInScreen} />
+                  <Stack.Screen name="WorksheetLibrary" component={WorksheetLibraryScreen} />
+                  <Stack.Screen name="ClientDetails" component={ClientDetailsScreen} />
+                  <Stack.Screen name="Progress" component={ProgressScreen} />
+                  <Stack.Screen name="Journal" component={JournalScreen} />
+                  <Stack.Screen name="Settings" component={SettingsScreen} />
+                  <Stack.Screen name="TherapyPrograms" component={TherapyProgramsScreen} />
+                  <Stack.Screen name="Resources" component={ResourcesScreen} />
+                  <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
+                  <Stack.Screen name="Badges" component={BadgesScreen} />
+                </>
+              )}
+            </Stack.Navigator>
+          </NavigationContainer>
+        </AuthContext.Provider>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }
