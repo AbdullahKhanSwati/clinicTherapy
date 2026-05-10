@@ -99,11 +99,11 @@ export default function DrawerContent(props) {
     },
     {
       id: 7,
-      icon: 'ℹ️',
-      label: 'About',
+      icon: '📚',
+      label: 'Resources',
       onPress: () => {
-        // Could add an About screen later
-        alert('Therapy Companion v1.0.0\n\nA safe space for wellness.');
+        props.navigation.navigate('Resources');
+        props.navigation.closeDrawer();
       },
     },
   ];
