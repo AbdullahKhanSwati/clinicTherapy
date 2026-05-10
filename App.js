@@ -11,7 +11,7 @@ import WelcomeScreen from './src/screens/WelcomeScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import RoleSelectionScreen from './src/screens/RoleSelectionScreen';
-import ChildDashboardWithTabs from './src/screens/dashboards/ChildDashboardWithTabs';
+import ChildDashboard from './src/screens/dashboards/ChildDashboard';
 import TeenDashboard from './src/screens/dashboards/TeenDashboard';
 import CouplesDashboard from './src/screens/dashboards/CouplesDashboard';
 import FamilyDashboard from './src/screens/dashboards/FamilyDashboard';
@@ -36,7 +36,7 @@ const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
 const ROLE_TO_SCREEN = {
-  child: 'ChildDashboardWithTabs',
+  child: 'ChildDashboard',
   teen: 'TeenDashboard',
   couples: 'CouplesDashboard',
   family: 'FamilyDashboard',
@@ -44,7 +44,7 @@ const ROLE_TO_SCREEN = {
 };
 
 const ROLE_TO_COMPONENT = {
-  child: ChildDashboardWithTabs,
+  child: ChildDashboard,
   teen: TeenDashboard,
   couples: CouplesDashboard,
   family: FamilyDashboard,
@@ -147,8 +147,8 @@ export default function App() {
               ) : (
                 <>
                   <Stack.Screen
-                    name={ROLE_TO_SCREEN[authState.userRole] || 'ChildDashboardWithTabs'}
-                    component={ROLE_TO_COMPONENT[authState.userRole] || ChildDashboardWithTabs}
+                    name={ROLE_TO_SCREEN[authState.userRole] || 'ChildDashboard'}
+                    component={ROLE_TO_COMPONENT[authState.userRole] || ChildDashboard}
                   />
                   <Stack.Screen name="Worksheet" component={WorksheetScreen} />
                   <Stack.Screen name="MoodCheckIn" component={MoodCheckInScreen} />
