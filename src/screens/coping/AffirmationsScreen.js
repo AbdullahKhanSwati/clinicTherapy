@@ -1,35 +1,54 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, StyleSheet, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/colors';
+import dataStore from '../../utils/dataStore';
 
-const AFFIRMATIONS = [
-  'I am brave, even when I feel scared.',
-  'My feelings are okay. All of them.',
-  'I am loved.',
-  'I can do hard things, one small step at a time.',
-  'I am learning every day.',
-  'I am kind to others, and I am kind to myself.',
-  'It is okay to ask for help.',
-  'I am proud of who I am.',
-  'I am safe right now.',
-  'Tomorrow is a new day.',
-  'I have people who care about me.',
-  'I am stronger than I think.',
-  'I deserve good things.',
-  'I am enough, just as I am.',
+const FALLBACK = [
+  { id: 'fb1', text: 'I am safe in this moment.', category: 'Anxiety' },
+  { id: 'fb2', text: 'Progress, not perfection.', category: 'Growth' },
 ];
 
 export default function AffirmationsScreen({ navigation }) {
-  const [index, setIndex] = useState(() =>
-    Math.floor(Math.random() * AFFIRMATIONS.length)
-  );
+  const [affirmations, setAffirmations] = useState([]);
+  const [user, setUser] = useState(null);
+  const [index, setIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        await dataStore.initialize();
+        const [u, list] = await Promise.all([
+          dataStore.getCurrentUser(),
+          dataStore.getAffirmations(),
+        ]);
+        setUser(u);
+        // Filter by audience: show 'all' + their own role
+        const role = u?.role;
+        const filtered = (list || []).filter(
+          (a) => !a.audience || a.audience === 'all' || a.audience === role
+        );
+        const final = filtered.length > 0 ? filtered : FALLBACK;
+        setAffirmations(final);
+        setIndex(Math.floor(Math.random() * final.length));
+      } catch (e) {
+        console.log('[Affirmations] load error', e);
+        setAffirmations(FALLBACK);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const current = affirmations[index] || FALLBACK[0];
 
   const next = () => {
+    if (affirmations.length <= 1) return;
     let n;
     do {
-      n = Math.floor(Math.random() * AFFIRMATIONS.length);
-    } while (n === index && AFFIRMATIONS.length > 1);
+      n = Math.floor(Math.random() * affirmations.length);
+    } while (n === index);
     setIndex(n);
   };
 
@@ -44,16 +63,27 @@ export default function AffirmationsScreen({ navigation }) {
       </View>
 
       <View style={styles.body}>
-        <Text style={styles.heart}>💖</Text>
-        <View style={styles.card}>
-          <Text style={styles.quote}>“{AFFIRMATIONS[index]}”</Text>
-        </View>
-        <TouchableOpacity style={styles.primaryBtn} onPress={next}>
-          <Text style={styles.primaryBtnText}>Show me another</Text>
-        </TouchableOpacity>
-        <Text style={styles.helper}>
-          Read it out loud. Read it again. Believe it.
-        </Text>
+        {loading ? (
+          <ActivityIndicator color={COLORS.primary} />
+        ) : (
+          <>
+            <Text style={styles.heart}>💖</Text>
+            <View style={styles.card}>
+              {current.category ? (
+                <Text style={styles.category}>
+                  {current.category.toUpperCase()}
+                </Text>
+              ) : null}
+              <Text style={styles.quote}>“{current.text}”</Text>
+            </View>
+            <TouchableOpacity style={styles.primaryBtn} onPress={next}>
+              <Text style={styles.primaryBtnText}>Show me another</Text>
+            </TouchableOpacity>
+            <Text style={styles.helper}>
+              Read it out loud. Read it again. Believe it.
+            </Text>
+          </>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -81,7 +111,15 @@ const styles = StyleSheet.create({
     padding: SPACING.xl,
     marginBottom: SPACING.xl,
     width: '100%',
+    alignItems: 'center',
     ...SHADOWS.lg,
+  },
+  category: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.primary,
+    letterSpacing: 1.4,
+    marginBottom: SPACING.md,
   },
   quote: {
     fontSize: TYPOGRAPHY.xl,

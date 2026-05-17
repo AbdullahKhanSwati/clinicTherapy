@@ -77,8 +77,22 @@ export const MOOD_ENTRIES = [
   { userId: 'child1', date: new Date(Date.now() - 518400000).toISOString(), mood: 'happy', intensity: 7, notes: 'Nice day' },
   { userId: 'teen1', date: new Date().toISOString(), mood: 'anxious', intensity: 6, notes: 'Worried about test tomorrow' },
   { userId: 'teen1', date: new Date(Date.now() - 86400000).toISOString(), mood: 'happy', intensity: 7, notes: '' },
-  { userId: 'partner1', date: new Date().toISOString(), mood: 'happy', intensity: 7, notes: '' },
+  // Couples — partner1 (current user when role=couples)
+  { userId: 'partner1', date: new Date().toISOString(), mood: 'happy', intensity: 7, notes: 'Good chat with Sarah this morning' },
+  { userId: 'partner1', date: new Date(Date.now() - 86400000).toISOString(), mood: 'calm', intensity: 7, notes: 'Quiet evening together' },
+  { userId: 'partner1', date: new Date(Date.now() - 86400000 * 2).toISOString(), mood: 'anxious', intensity: 6, notes: 'Work was overwhelming' },
+  { userId: 'partner1', date: new Date(Date.now() - 86400000 * 3).toISOString(), mood: 'happy', intensity: 8, notes: 'Date night was great' },
+  { userId: 'partner1', date: new Date(Date.now() - 86400000 * 4).toISOString(), mood: 'okay', intensity: 5, notes: '' },
+  { userId: 'partner1', date: new Date(Date.now() - 86400000 * 5).toISOString(), mood: 'excited', intensity: 8, notes: 'Planned our trip' },
+  { userId: 'partner1', date: new Date(Date.now() - 86400000 * 6).toISOString(), mood: 'calm', intensity: 7, notes: 'Sunday wind-down' },
+  // Couples — partner2
   { userId: 'partner2', date: new Date().toISOString(), mood: 'okay', intensity: 5, notes: 'Stressed from work' },
+  { userId: 'partner2', date: new Date(Date.now() - 86400000).toISOString(), mood: 'happy', intensity: 7, notes: 'Felt heard tonight' },
+  { userId: 'partner2', date: new Date(Date.now() - 86400000 * 2).toISOString(), mood: 'anxious', intensity: 6, notes: 'Deadlines piling up' },
+  { userId: 'partner2', date: new Date(Date.now() - 86400000 * 3).toISOString(), mood: 'happy', intensity: 8, notes: 'Loved the date' },
+  { userId: 'partner2', date: new Date(Date.now() - 86400000 * 4).toISOString(), mood: 'calm', intensity: 6, notes: '' },
+  { userId: 'partner2', date: new Date(Date.now() - 86400000 * 5).toISOString(), mood: 'excited', intensity: 8, notes: 'Trip planning!' },
+  { userId: 'partner2', date: new Date(Date.now() - 86400000 * 6).toISOString(), mood: 'sad', intensity: 4, notes: 'Missed family back home' },
 ];
 
 export const JOURNAL_ENTRIES = [
@@ -126,6 +140,44 @@ export const JOURNAL_ENTRIES = [
     content: 'After talking to my friend, I feel more confident about presenting the project to the class.',
     mood: 'happy',
     emoji: '📚',
+  },
+  // Couples journal entries (partner1)
+  {
+    id: 'journal_p1_1',
+    userId: 'partner1',
+    date: new Date().toISOString(),
+    title: 'A good morning',
+    content: 'Sarah and I had coffee together before work — phone-free. It felt like the old days. Small ritual, big difference.',
+    mood: 'happy',
+    emoji: '☕',
+  },
+  {
+    id: 'journal_p1_2',
+    userId: 'partner1',
+    date: new Date(Date.now() - 86400000 * 2).toISOString(),
+    title: 'Working through tension',
+    content: 'We had a tough conversation about finances. Used the active listening tool. It actually helped — we both felt heard.',
+    mood: 'calm',
+    emoji: '💬',
+  },
+  {
+    id: 'journal_p1_3',
+    userId: 'partner1',
+    date: new Date(Date.now() - 86400000 * 4).toISOString(),
+    title: 'Date night reflections',
+    content: 'Tried the new restaurant downtown. We laughed more than we have in weeks. Note to self: prioritize these nights.',
+    mood: 'excited',
+    emoji: '💕',
+  },
+  // Couples journal entries (partner2)
+  {
+    id: 'journal_p2_1',
+    userId: 'partner2',
+    date: new Date(Date.now() - 86400000).toISOString(),
+    title: 'Felt heard',
+    content: 'John really listened tonight without trying to fix anything. That\'s what I needed. Grateful.',
+    mood: 'happy',
+    emoji: '🙏',
   },
 ];
 
@@ -273,6 +325,82 @@ export const WORKSHEET_ASSIGNMENTS = [
     notes: 'A short reflection on what you like about yourself',
     sharedWith: 'therapist',
   },
+  // ==================
+  // COUPLES — partner1
+  // ==================
+  {
+    id: 'assign_couple_1',
+    clientId: 'partner1',
+    therapistId: 'therapist1',
+    worksheetId: 'ws_active_listening',
+    assignedDate: new Date(Date.now() - 86400000 * 2).toISOString(),
+    dueDate: new Date(Date.now() + 86400000 * 5).toISOString(),
+    status: 'in-progress',
+    priority: 'high',
+    notes: 'Practice this with Sarah this week — focus on reflecting back.',
+    sharedWith: 'partner',
+  },
+  {
+    id: 'assign_couple_2',
+    clientId: 'partner1',
+    therapistId: 'therapist1',
+    worksheetId: 'ws_gratitude_share',
+    assignedDate: new Date(Date.now() - 86400000).toISOString(),
+    dueDate: new Date(Date.now() + 86400000 * 7).toISOString(),
+    status: 'pending',
+    priority: 'medium',
+    notes: 'Try to do this together at the end of each day.',
+    sharedWith: 'partner',
+  },
+  {
+    id: 'assign_couple_3',
+    clientId: 'partner1',
+    therapistId: 'therapist1',
+    worksheetId: 'ws_conflict_repair',
+    assignedDate: new Date(Date.now() - 86400000 * 4).toISOString(),
+    dueDate: new Date(Date.now() + 86400000 * 3).toISOString(),
+    status: 'pending',
+    priority: 'high',
+    notes: 'Use after the next disagreement — no rush, complete when needed.',
+    sharedWith: 'partner',
+  },
+  {
+    id: 'assign_couple_4',
+    clientId: 'partner1',
+    therapistId: 'therapist1',
+    worksheetId: 'ws_shared_vision',
+    assignedDate: new Date(Date.now() - 86400000 * 7).toISOString(),
+    dueDate: new Date(Date.now() + 86400000 * 14).toISOString(),
+    status: 'completed',
+    priority: 'medium',
+    notes: 'Great work — revisit quarterly.',
+    sharedWith: 'partner',
+  },
+  // Same set mirrored to partner2 (in real apps both partners would see the same shared worksheets)
+  {
+    id: 'assign_couple_5',
+    clientId: 'partner2',
+    therapistId: 'therapist1',
+    worksheetId: 'ws_active_listening',
+    assignedDate: new Date(Date.now() - 86400000 * 2).toISOString(),
+    dueDate: new Date(Date.now() + 86400000 * 5).toISOString(),
+    status: 'in-progress',
+    priority: 'high',
+    notes: 'Practice with John this week.',
+    sharedWith: 'partner',
+  },
+  {
+    id: 'assign_couple_6',
+    clientId: 'partner2',
+    therapistId: 'therapist1',
+    worksheetId: 'ws_gratitude_share',
+    assignedDate: new Date(Date.now() - 86400000).toISOString(),
+    dueDate: new Date(Date.now() + 86400000 * 7).toISOString(),
+    status: 'pending',
+    priority: 'medium',
+    notes: '',
+    sharedWith: 'partner',
+  },
 ];
 
 export const THERAPY_PROGRAMS = [
@@ -325,54 +453,269 @@ export const THERAPIST_NOTES = [
   },
 ];
 
-// Mock badges data
-export const BADGES_DATA = [
+// ============================
+// AFFIRMATIONS — managed by admin
+// ============================
+export const AFFIRMATIONS = [
   {
-    id: 1,
-    title: 'Happy Start',
-    emoji: '⭐',
-    description: 'Logged in for the first time',
-    unlocked: true,
-    earnedDate: new Date(Date.now() - 86400000 * 2).toISOString(),
+    id: 'af_1',
+    text: 'You are doing better than you think.',
+    category: 'Self-compassion',
+    audience: 'all',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 14).toISOString(),
   },
   {
-    id: 2,
-    title: 'Brave Heart',
-    emoji: '💪',
-    description: 'Completed your first worksheet',
-    unlocked: true,
-    earnedDate: new Date(Date.now() - 86400000).toISOString(),
+    id: 'af_2',
+    text: 'Progress, not perfection.',
+    category: 'Growth',
+    audience: 'teen',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 10).toISOString(),
   },
   {
-    id: 3,
-    title: 'Peace Master',
-    emoji: '☮️',
-    description: 'Used breathing exercises 10 times',
-    unlocked: false,
-    progress: 60,
+    id: 'af_3',
+    text: 'Your feelings are valid.',
+    category: 'Self-compassion',
+    audience: 'all',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 7).toISOString(),
   },
   {
-    id: 4,
-    title: 'Joy Seeker',
-    emoji: '🎉',
-    description: 'Had 7 days of positive moods',
-    unlocked: false,
-    progress: 40,
+    id: 'af_4',
+    text: 'I am safe in this moment.',
+    category: 'Anxiety',
+    audience: 'all',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
   },
   {
-    id: 5,
-    title: 'Resilience Hero',
-    emoji: '🦸',
-    description: 'Completed 10 worksheets',
-    unlocked: false,
-    progress: 50,
+    id: 'af_5',
+    text: 'Small acts of kindness compound.',
+    category: 'Connection',
+    audience: 'couples',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
   },
   {
-    id: 6,
-    title: 'Mindful Mind',
-    emoji: '🧠',
-    description: 'Journaled for 5 consecutive days',
-    unlocked: false,
-    progress: 20,
+    id: 'af_6',
+    text: 'I am stronger than this moment.',
+    category: 'Resilience',
+    audience: 'teen',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
   },
 ];
+
+// ============================
+// COPING TOOLS — managed by admin
+// ============================
+export const COPING_TOOLS = [
+  {
+    id: 'ct_box_breathing',
+    title: 'Box Breathing',
+    type: 'breathing',
+    description: '4-4-4-4 pattern to calm your nervous system',
+    instructions:
+      'Inhale for 4 seconds. Hold for 4. Exhale for 4. Hold for 4. Repeat for 5 cycles.',
+    duration: '5 min',
+    audience: 'all',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 30).toISOString(),
+  },
+  {
+    id: 'ct_grounding_5_4_3_2_1',
+    title: '5-4-3-2-1 Grounding',
+    type: 'grounding',
+    description: 'Anchor yourself in the present using your five senses',
+    instructions:
+      'Name 5 things you can see, 4 you can touch, 3 you can hear, 2 you can smell, 1 you can taste.',
+    duration: '3 min',
+    audience: 'all',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 25).toISOString(),
+  },
+  {
+    id: 'ct_safe_place',
+    title: 'Safe Place Visualization',
+    type: 'visualization',
+    description: 'Mental imagery of a place where you feel completely safe',
+    instructions:
+      'Close your eyes. Picture a place where you feel safe — real or imagined. Notice details: light, sound, smell, temperature. Stay there for 5 minutes.',
+    duration: '7 min',
+    audience: 'all',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 20).toISOString(),
+  },
+  {
+    id: 'ct_478_breathing',
+    title: '4-7-8 Breathing',
+    type: 'breathing',
+    description: 'Powerful technique to fall asleep or release stress',
+    instructions:
+      'Inhale through the nose for 4 seconds. Hold for 7. Exhale through the mouth for 8. Repeat 4 times.',
+    duration: '4 min',
+    audience: 'teen',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 12).toISOString(),
+  },
+  {
+    id: 'ct_progressive_muscle',
+    title: 'Progressive Muscle Relaxation',
+    type: 'relaxation',
+    description: 'Tense and release muscle groups to discharge physical tension',
+    instructions:
+      'Starting at your feet, tense each muscle group for 5 seconds, then release. Move up the body: legs, abdomen, chest, arms, hands, neck, face.',
+    duration: '10 min',
+    audience: 'all',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 8).toISOString(),
+  },
+];
+
+// ============================
+// RESOURCES — managed by admin, assignable to clients
+// ============================
+export const RESOURCES = [
+  {
+    id: 'res_1',
+    title: 'Understanding Anxiety: A Parent Guide',
+    description: 'Helpful overview for parents on what anxiety looks like in children.',
+    type: 'article',
+    url: 'https://example.com/anxiety-parent-guide',
+    category: 'Anxiety',
+    audience: 'family',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 30).toISOString(),
+  },
+  {
+    id: 'res_2',
+    title: 'Teen Sleep Hygiene Checklist',
+    description: 'A printable checklist to help build better sleep routines.',
+    type: 'document',
+    url: 'https://example.com/teen-sleep',
+    category: 'Sleep',
+    audience: 'teen',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 20).toISOString(),
+  },
+  {
+    id: 'res_3',
+    title: 'The 5 Love Languages — Quick Overview',
+    description: 'Short read on how partners give and receive love differently.',
+    type: 'article',
+    url: 'https://example.com/love-languages',
+    category: 'Communication',
+    audience: 'couples',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 15).toISOString(),
+  },
+  {
+    id: 'res_4',
+    title: 'Mindful Breathing for Kids (Video)',
+    description: 'A 5-minute guided breathing exercise designed for children.',
+    type: 'video',
+    url: 'https://example.com/mindful-kids',
+    category: 'Mindfulness',
+    audience: 'child',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 10).toISOString(),
+  },
+  {
+    id: 'res_5',
+    title: 'Crisis Hotline Numbers',
+    description: 'Important numbers to keep handy in case of emergency.',
+    type: 'note',
+    url: '',
+    content:
+      'National Suicide Prevention Lifeline: 988\nCrisis Text Line: Text HOME to 741741',
+    category: 'Crisis Support',
+    audience: 'all',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+  },
+];
+
+// Per-client resource assignments (which resources are pinned to which client)
+export const CLIENT_RESOURCES = [
+  {
+    id: 'cr_1',
+    clientId: 'teen1',
+    resourceId: 'res_2',
+    assignedBy: 'therapist1',
+    assignedAt: new Date(Date.now() - 86400000 * 7).toISOString(),
+    note: 'Sleep has been a struggle — try this for the next two weeks.',
+  },
+  {
+    id: 'cr_2',
+    clientId: 'partner1',
+    resourceId: 'res_3',
+    assignedBy: 'therapist1',
+    assignedAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+    note: 'Quick read for our next session.',
+  },
+  {
+    id: 'cr_3',
+    clientId: 'child1',
+    resourceId: 'res_4',
+    assignedBy: 'therapist1',
+    assignedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+    note: 'Watch with a parent.',
+  },
+];
+
+// ============================
+// DATE IDEAS — Couples-specific content, managed by admin
+// ============================
+export const DATE_IDEAS = [
+  {
+    id: 'di_1',
+    title: 'Cook a new recipe together',
+    description: 'Pick a cuisine neither of you has tried.',
+    tag: 'AT HOME',
+    audience: 'couples',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 20).toISOString(),
+  },
+  {
+    id: 'di_2',
+    title: 'Sunset walk with five questions',
+    description: 'Bring five conversation starters with you.',
+    tag: 'OUTDOOR',
+    audience: 'couples',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 18).toISOString(),
+  },
+  {
+    id: 'di_3',
+    title: 'Phone-free game night',
+    description: 'Devices in another room — full presence.',
+    tag: 'AT HOME',
+    audience: 'couples',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 15).toISOString(),
+  },
+  {
+    id: 'di_4',
+    title: 'Letters to your future selves',
+    description: 'Open them on your next anniversary.',
+    tag: 'MEANINGFUL',
+    audience: 'couples',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 10).toISOString(),
+  },
+  {
+    id: 'di_5',
+    title: 'Try a creative class together',
+    description: 'Pottery, painting, dance — your pick.',
+    tag: 'NEW',
+    audience: 'couples',
+    createdBy: 'therapist1',
+    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+  },
+];
+
+// ============================
+// CUSTOM WORKSHEETS — created by admin (merged with WORKSHEET_TEMPLATES at runtime)
+// ============================
+export const CUSTOM_WORKSHEETS = [];

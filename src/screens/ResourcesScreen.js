@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -6,316 +6,439 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  ActivityIndicator,
+  Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/colors';
+import { Feather } from '@expo/vector-icons';
+import {
+  COLORS,
+  TYPOGRAPHY,
+  SPACING,
+  BORDER_RADIUS,
+  SHADOWS,
+} from '../constants/colors';
+import dataStore from '../utils/dataStore';
 
-const RESOURCES = [
-  { id: 1, category: 'Anxiety', title: 'Understanding Anxiety Disorders', type: 'Article', duration: '8 min read', emoji: '😰' },
-  { id: 2, category: 'Anxiety', title: 'Breathing Techniques for Panic', type: 'Video', duration: '5 min', emoji: '🌬️' },
-  { id: 3, category: 'Depression', title: 'Cognitive Distortions Explained', type: 'Article', duration: '10 min read', emoji: '💭' },
-  { id: 4, category: 'Depression', title: 'Building a Routine', type: 'Guide', duration: '15 min', emoji: '📋' },
-  { id: 5, category: 'Sleep', title: 'Sleep Hygiene Tips', type: 'Article', duration: '6 min read', emoji: '😴' },
-  { id: 6, category: 'Relationships', title: 'Healthy Communication Skills', type: 'Video', duration: '12 min', emoji: '💬' },
-  { id: 7, category: 'Stress', title: 'Stress Management Techniques', type: 'Interactive', duration: '20 min', emoji: '🧘' },
-  { id: 8, category: 'Self-Care', title: 'Daily Self-Care Checklist', type: 'Tool', duration: '5 min', emoji: '💪' },
-];
+const TYPE_ICON = {
+  article: 'file-text',
+  video: 'video',
+  document: 'paperclip',
+  note: 'edit-3',
+};
 
-const CATEGORIES = ['All', 'Anxiety', 'Depression', 'Sleep', 'Relationships', 'Stress', 'Self-Care'];
-
-const TYPE_COLORS = {
-  Article: { bg: '#E0F4FF', fg: '#0369A1' },
-  Video: { bg: '#FFE4E6', fg: '#BE123C' },
-  Guide: { bg: '#FEF3C7', fg: '#92400E' },
-  Interactive: { bg: '#F3E8FF', fg: '#6D28D9' },
-  Tool: { bg: '#D1FAE5', fg: '#047857' },
+const TYPE_COLOR = {
+  article: '#0369A1',
+  video: '#BE123C',
+  document: '#92400E',
+  note: '#6D28D9',
 };
 
 export default function ResourcesScreen({ navigation }) {
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [user, setUser] = useState(null);
+  const [allResources, setAllResources] = useState([]);
+  const [assigned, setAssigned] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('All');
 
-  const filteredResources = useMemo(() => {
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        await dataStore.initialize();
+        const u = await dataStore.getCurrentUser();
+        setUser(u);
+        const [all, mine] = await Promise.all([
+          dataStore.getResources(),
+          u ? dataStore.getClientResourcesByClient(u.id) : Promise.resolve([]),
+        ]);
+        setAllResources(all || []);
+        setAssigned(mine || []);
+      } catch (e) {
+        console.log('[Resources] load error', e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const assignedResources = useMemo(() => {
+    return assigned
+      .map((a) => {
+        const res = allResources.find((r) => r.id === a.resourceId);
+        return res ? { ...res, assignmentId: a.id, note: a.note, assignedAt: a.assignedAt } : null;
+      })
+      .filter(Boolean);
+  }, [assigned, allResources]);
+
+  // Library = audience-filtered list, excluding ones already assigned
+  const libraryResources = useMemo(() => {
+    const role = user?.role;
+    const assignedIds = new Set(assigned.map((a) => a.resourceId));
+    return allResources.filter(
+      (r) =>
+        !assignedIds.has(r.id) &&
+        (!r.audience || r.audience === 'all' || r.audience === role)
+    );
+  }, [allResources, assigned, user]);
+
+  const categories = useMemo(() => {
+    const set = new Set(['All']);
+    allResources.forEach((r) => r.category && set.add(r.category));
+    return Array.from(set);
+  }, [allResources]);
+
+  const filteredLibrary = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return RESOURCES.filter((r) => {
+    return libraryResources.filter((r) => {
       const matchesCategory =
-        selectedCategory === 'All' || r.category === selectedCategory;
+        categoryFilter === 'All' || r.category === categoryFilter;
       const matchesSearch =
         !q ||
         r.title.toLowerCase().includes(q) ||
-        r.category.toLowerCase().includes(q);
+        (r.category || '').toLowerCase().includes(q) ||
+        (r.description || '').toLowerCase().includes(q);
       return matchesCategory && matchesSearch;
     });
-  }, [selectedCategory, searchQuery]);
+  }, [libraryResources, categoryFilter, searchQuery]);
+
+  const openResource = (r) => {
+    if (r.type === 'note' || !r.url) {
+      Alert.alert(r.title, r.content || r.description || 'No content');
+    } else {
+      Linking.openURL(r.url).catch(() => {
+        Alert.alert(r.title, `${r.description}\n\n${r.url}`);
+      });
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Sticky-ish header (outside the ScrollView padding so the chip strip can be edge-to-edge) */}
-      <View style={styles.headerWrap}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={8}>
-            <Text style={styles.backButton}>← Back</Text>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={8}>
+          <Feather name="arrow-left" size={20} color={COLORS.primary} />
+        </TouchableOpacity>
+        <Text style={styles.title}>Resources</Text>
+        <View style={{ width: 20 }} />
+      </View>
+
+      <View style={styles.searchBar}>
+        <Feather
+          name="search"
+          size={16}
+          color={COLORS.gray400}
+          style={{ marginRight: SPACING.sm }}
+        />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search resources"
+          placeholderTextColor={COLORS.gray400}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <Feather name="x" size={16} color={COLORS.gray500} />
           </TouchableOpacity>
-          <Text style={styles.title}>Resources</Text>
-          <View style={{ width: 50 }} />
-        </View>
-
-        <View style={styles.searchContainer}>
-          <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search resources..."
-            placeholderTextColor={COLORS.gray400}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-          />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={8}>
-              <Text style={styles.clearIcon}>×</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipStrip}
-        >
-          {CATEGORIES.map((category) => {
-            const active = selectedCategory === category;
-            return (
-              <TouchableOpacity
-                key={category}
-                activeOpacity={0.85}
-                style={[styles.chip, active && styles.chipActive]}
-                onPress={() => setSelectedCategory(category)}
-              >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                  {category}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        <View style={styles.resultBar}>
-          <Text style={styles.resultText}>
-            {filteredResources.length} result{filteredResources.length === 1 ? '' : 's'}
-            {selectedCategory !== 'All' ? ` in ${selectedCategory}` : ''}
-          </Text>
-        </View>
+        )}
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.listContent}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipScroll}
+        contentContainerStyle={styles.chipRow}
+      >
+        {categories.map((cat) => {
+          const active = categoryFilter === cat;
+          return (
+            <TouchableOpacity
+              key={cat}
+              style={[styles.chip, active && styles.chipActive]}
+              onPress={() => setCategoryFilter(cat)}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[styles.chipText, active && styles.chipTextActive]}
+              >
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {filteredResources.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📚</Text>
-            <Text style={styles.emptyTitle}>No resources found</Text>
-            <Text style={styles.emptyText}>
-              Try a different category or clear your search
-            </Text>
+        {loading ? (
+          <View style={styles.loadingBlock}>
+            <ActivityIndicator color={COLORS.primary} />
           </View>
         ) : (
-          filteredResources.map((resource) => {
-            const typeColors =
-              TYPE_COLORS[resource.type] || { bg: COLORS.gray100, fg: COLORS.gray700 };
-            return (
-              <TouchableOpacity
-                key={resource.id}
-                activeOpacity={0.85}
-                style={styles.resourceCard}
-              >
-                <View style={styles.cardLeft}>
-                  <Text style={styles.resourceEmoji}>{resource.emoji}</Text>
-                </View>
-                <View style={styles.cardBody}>
-                  <Text style={styles.resourceTitle} numberOfLines={2}>
-                    {resource.title}
-                  </Text>
-                  <View style={styles.metaRow}>
-                    <View
-                      style={[styles.typeTag, { backgroundColor: typeColors.bg }]}
-                    >
-                      <Text
-                        style={[styles.typeTagText, { color: typeColors.fg }]}
-                      >
-                        {resource.type}
-                      </Text>
-                    </View>
-                    <Text style={styles.dot}>·</Text>
-                    <Text style={styles.metaText}>{resource.category}</Text>
-                    <Text style={styles.dot}>·</Text>
-                    <Text style={styles.metaText}>{resource.duration}</Text>
-                  </View>
-                </View>
-                <Text style={styles.arrow}>›</Text>
-              </TouchableOpacity>
-            );
-          })
+          <>
+            {assignedResources.length > 0 && (
+              <>
+                <Text style={styles.sectionLabel}>ASSIGNED TO YOU</Text>
+                {assignedResources.map((r) => (
+                  <ResourceCard
+                    key={r.id}
+                    resource={r}
+                    isAssigned
+                    onPress={() => openResource(r)}
+                  />
+                ))}
+              </>
+            )}
+
+            <Text style={styles.sectionLabel}>LIBRARY</Text>
+
+            {filteredLibrary.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Feather name="book-open" size={32} color={COLORS.gray300} />
+                <Text style={styles.emptyTitle}>No resources</Text>
+                <Text style={styles.emptyText}>
+                  {searchQuery ? 'Try a different search.' : 'Check back soon.'}
+                </Text>
+              </View>
+            ) : (
+              filteredLibrary.map((r) => (
+                <ResourceCard
+                  key={r.id}
+                  resource={r}
+                  onPress={() => openResource(r)}
+                />
+              ))
+            )}
+          </>
         )}
+
+        <View style={{ height: SPACING.xl }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.white },
+const ResourceCard = ({ resource, isAssigned, onPress }) => {
+  const icon = TYPE_ICON[resource.type] || 'link';
+  const color = TYPE_COLOR[resource.type] || COLORS.gray600;
+  return (
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onPress}
+      activeOpacity={0.85}
+    >
+      <View style={[styles.cardIcon, { backgroundColor: color + '15' }]}>
+        <Feather name={icon} size={18} color={color} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <View style={styles.cardTopRow}>
+          <Text style={styles.cardCategory}>
+            {(resource.category || '').toUpperCase()}
+          </Text>
+          {isAssigned && (
+            <View style={styles.assignedPill}>
+              <Text style={styles.assignedPillText}>FROM THERAPIST</Text>
+            </View>
+          )}
+        </View>
+        <Text style={styles.cardTitle} numberOfLines={1}>
+          {resource.title}
+        </Text>
+        <Text style={styles.cardDesc} numberOfLines={2}>
+          {resource.description}
+        </Text>
+        {isAssigned && resource.note ? (
+          <View style={styles.noteBox}>
+            <Text style={styles.noteLabel}>NOTE</Text>
+            <Text style={styles.noteText}>{resource.note}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Feather name="chevron-right" size={18} color={COLORS.gray400} />
+    </TouchableOpacity>
+  );
+};
 
-  headerWrap: {
-    backgroundColor: COLORS.white,
-    paddingBottom: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray100,
-  },
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray100,
   },
-  backButton: { color: COLORS.primary, fontWeight: '600' },
   title: {
     fontSize: TYPOGRAPHY.lg,
     fontWeight: '700',
     color: COLORS.primary,
+    letterSpacing: -0.3,
   },
 
-  searchContainer: {
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: COLORS.surface,
     marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
-    backgroundColor: COLORS.gray100,
-    borderRadius: BORDER_RADIUS.lg,
+    marginTop: SPACING.md,
     paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray100,
   },
-  searchIcon: { fontSize: TYPOGRAPHY.base, marginRight: SPACING.sm },
   searchInput: {
     flex: 1,
-    paddingVertical: SPACING.md,
-    fontSize: TYPOGRAPHY.sm,
+    fontSize: 14,
     color: COLORS.gray700,
-  },
-  clearIcon: {
-    fontSize: 22,
-    color: COLORS.gray500,
-    paddingHorizontal: SPACING.sm,
-    lineHeight: 22,
+    fontWeight: '500',
+    paddingVertical: 4,
   },
 
-  chipStrip: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.sm,
-    gap: SPACING.sm,
-  },
+  chipScroll: { flexGrow: 0, marginTop: SPACING.sm },
+  chipRow: { paddingHorizontal: SPACING.lg },
   chip: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.full,
+    marginRight: 6,
     borderWidth: 1,
-    borderColor: COLORS.gray200,
-    backgroundColor: COLORS.white,
-    minWidth: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: COLORS.gray100,
   },
   chipActive: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
-    ...SHADOWS.sm,
   },
   chipText: {
-    fontSize: TYPOGRAPHY.xs,
-    fontWeight: '600',
-    color: COLORS.gray700,
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.gray600,
   },
   chipTextActive: { color: COLORS.white },
 
-  resultBar: {
+  scrollContent: {
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.xs,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xl,
   },
-  resultText: {
-    fontSize: TYPOGRAPHY.xs,
+
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: '700',
     color: COLORS.gray500,
-    fontWeight: '500',
+    letterSpacing: 1.4,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.xs,
   },
 
-  listContent: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING['2xl'],
-    gap: SPACING.md,
-  },
+  loadingBlock: { padding: SPACING.xl, alignItems: 'center' },
 
-  resourceCard: {
+  /* Card */
+  card: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
+    padding: SPACING.lg,
+    marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.gray200,
+    borderColor: COLORS.gray100,
     ...SHADOWS.sm,
   },
-  cardLeft: {
-    width: 48,
-    height: 48,
-    borderRadius: BORDER_RADIUS.md,
-    backgroundColor: COLORS.surfaceAlt,
+  cardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.md,
   },
-  resourceEmoji: { fontSize: 28 },
-  cardBody: { flex: 1 },
-  resourceTitle: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '700',
-    color: COLORS.gray700,
-    marginBottom: 6,
-  },
-  metaRow: {
+  cardTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
+    marginBottom: 2,
   },
-  typeTag: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
+  cardCategory: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: COLORS.primary,
+    letterSpacing: 1.2,
+    flex: 1,
+  },
+  assignedPill: {
+    backgroundColor: '#D9770615',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
     borderRadius: BORDER_RADIUS.sm,
-    marginRight: SPACING.xs,
   },
-  typeTagText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
-  dot: { color: COLORS.gray400, marginHorizontal: 4, fontSize: TYPOGRAPHY.xs },
-  metaText: { fontSize: TYPOGRAPHY.xs, color: COLORS.gray500 },
-  arrow: {
-    fontSize: TYPOGRAPHY.xl,
-    color: COLORS.gray400,
-    marginLeft: SPACING.sm,
-    fontWeight: '600',
+  assignedPillText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#D97706',
+    letterSpacing: 0.8,
+  },
+  cardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.gray700,
+    marginBottom: 2,
+    letterSpacing: -0.2,
+  },
+  cardDesc: {
+    fontSize: 12,
+    color: COLORS.gray500,
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  noteBox: {
+    backgroundColor: COLORS.gray50,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  noteLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: COLORS.gray500,
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  noteText: {
+    fontSize: 12,
+    color: COLORS.gray700,
+    fontStyle: 'italic',
+    lineHeight: 17,
   },
 
-  emptyContainer: {
+  /* Empty */
+  emptyCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.xl,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING['3xl'],
+    borderWidth: 1,
+    borderColor: COLORS.gray100,
   },
-  emptyIcon: { fontSize: 48, marginBottom: SPACING.lg },
   emptyTitle: {
-    fontSize: TYPOGRAPHY.base,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     color: COLORS.gray700,
-    marginBottom: SPACING.sm,
+    marginTop: SPACING.md,
+    marginBottom: 4,
   },
   emptyText: {
-    fontSize: TYPOGRAPHY.sm,
+    fontSize: 12,
     color: COLORS.gray500,
-    textAlign: 'center',
+    fontWeight: '500',
   },
 });

@@ -36,17 +36,10 @@ export default function MoodRewardsTab({ navigation }) {
     })();
   }, []);
 
-  const BADGES = [
-    { id: 1, emoji: '⭐', title: 'First Check-In', unlocked: true },
-    { id: 2, emoji: '🔥', title: '3-Day Streak', unlocked: streak >= 3 },
-    { id: 3, emoji: '💪', title: '7-Day Streak', unlocked: streak >= 7 },
-    { id: 4, emoji: '🏆', title: 'Mood Master', unlocked: streak >= 30 },
-  ];
-
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <TabScreenHeader title="Mood & Rewards" subtitle="Track your feelings, earn badges" />
+        <TabScreenHeader title="Mood" subtitle="Track how you're feeling" />
 
         <TouchableOpacity
           style={styles.checkInCard}
@@ -76,26 +69,11 @@ export default function MoodRewardsTab({ navigation }) {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Your Badges</Text>
-          <View style={styles.badgeGrid}>
-            {BADGES.map((b) => (
-              <View
-                key={b.id}
-                style={[styles.badgeCard, !b.unlocked && styles.badgeLocked]}
-              >
-                <Text style={[styles.badgeEmoji, !b.unlocked && { opacity: 0.3 }]}>
-                  {b.emoji}
-                </Text>
-                <Text style={styles.badgeLabel}>{b.title}</Text>
-              </View>
-            ))}
-          </View>
-          <TouchableOpacity
-            style={styles.viewAllBtn}
-            onPress={() => navigation.navigate('Badges')}
-          >
-            <Text style={styles.viewAllText}>View all badges →</Text>
-          </TouchableOpacity>
+          <Text style={styles.cardTitle}>Your Streak</Text>
+          <Text style={styles.streakValue}>{streak}</Text>
+          <Text style={styles.streakLabel}>
+            {streak === 1 ? 'check-in logged' : 'check-ins logged'}
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -143,23 +121,16 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: TYPOGRAPHY.sm, color: COLORS.gray500 },
   moodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   moodBubble: { fontSize: 32 },
-  badgeGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  badgeCard: {
-    width: '48%',
-    backgroundColor: COLORS.surfaceAlt,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
+  streakValue: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: COLORS.primary,
+    letterSpacing: -1,
   },
-  badgeLocked: { opacity: 0.5 },
-  badgeEmoji: { fontSize: 32, marginBottom: SPACING.xs },
-  badgeLabel: {
-    fontSize: TYPOGRAPHY.xs,
-    fontWeight: '600',
-    color: COLORS.gray700,
-    textAlign: 'center',
+  streakLabel: {
+    fontSize: TYPOGRAPHY.sm,
+    color: COLORS.gray500,
+    fontWeight: '500',
+    marginTop: 2,
   },
-  viewAllBtn: { marginTop: SPACING.md, alignItems: 'center' },
-  viewAllText: { fontSize: TYPOGRAPHY.sm, color: COLORS.primary, fontWeight: '600' },
 });

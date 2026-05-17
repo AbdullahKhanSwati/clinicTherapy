@@ -1,9 +1,22 @@
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
+import { Platform, LogBox } from 'react-native';
+import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DAILY_CHECKIN_KEY = 'notif_daily_checkin_id';
 const SETTINGS_KEY = 'notif_settings';
+
+// Expo Go on SDK 53+ no longer supports remote push notifications on Android.
+// We only use *local* scheduled notifications, which still work — so silence the noisy
+// warning that expo-notifications prints at import time inside Expo Go.
+export const IS_EXPO_GO = Constants.executionEnvironment === 'storeClient';
+
+if (IS_EXPO_GO) {
+  LogBox.ignoreLogs([
+    'expo-notifications: Android Push notifications',
+    '`expo-notifications` functionality is not fully supported in Expo Go',
+  ]);
+}
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({

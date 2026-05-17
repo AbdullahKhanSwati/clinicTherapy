@@ -1,505 +1,281 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  StyleSheet,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
-import { useAuth } from '../../../App';
+import React from 'react';
+import { View, StyleSheet, Text, Platform } from 'react-native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createDrawerNavigator } from '@react-navigation/drawer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 
-export default function TherapistDashboard({ navigation }) {
-  const { signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState('home');
+import { COLORS, SPACING } from '../../constants/colors';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 
-  const handleLogout = async () => {
-    await signOut();
-  };
+// Therapist tab screens
+import OverviewTab from './therapist/OverviewTab';
+import ClientsTab from './therapist/ClientsTab';
+import WorksheetsTab from './therapist/WorksheetsTab';
+import InsightsTab from './therapist/InsightsTab';
+import ProfileTab from './therapist/ProfileTab';
+import DrawerContent from './therapist/DrawerContent';
 
-  const CLIENTS = [
-    { id: 1, name: 'Alex (Teen)', diagnosis: 'Anxiety Disorder', progress: 65, nextSession: 'Today 3:00 PM' },
-    { id: 2, name: 'Emma (Child)', diagnosis: 'ADHD', progress: 50, nextSession: 'Tomorrow 2:00 PM' },
-    { id: 3, name: 'John & Sarah', diagnosis: 'Relationship Issues', progress: 70, nextSession: 'Thursday 6:00 PM' },
-  ];
+// Detail screens reused from app stack
+import ClientDetailsScreen from '../therapist/ClientDetailsScreen';
+import AssignWorksheetScreen from '../therapist/AssignWorksheetScreen';
+import AddNoteScreen from '../therapist/AddNoteScreen';
+import WorksheetLibraryScreen from '../therapist/WorksheetLibraryScreen';
+import ManageContentScreen from '../therapist/ManageContentScreen';
+import CreateContentScreen from '../therapist/CreateContentScreen';
+import CreateWorksheetScreen from '../therapist/CreateWorksheetScreen';
+import AddClientResourceScreen from '../therapist/AddClientResourceScreen';
+import SettingsScreen from '../SettingsScreen';
+import NotificationCenterScreen from '../NotificationCenterScreen';
 
-  const SESSION_NOTES = [
-    { clientName: 'Alex', date: 'Today', mood: '😊', progress: 'Good engagement, practiced breathing techniques' },
-    { clientName: 'Emma', date: 'Yesterday', mood: '😐', progress: 'Focused on concentration exercises' },
-  ];
+const INK = '#1A2332';
 
-  if (activeTab === 'clients') {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.header}>
-            <Text style={styles.title}>My Clients</Text>
-            <TouchableOpacity style={styles.backButton} onPress={() => setActiveTab('home')}>
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-          </View>
+const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
+const Drawer = createDrawerNavigator();
 
-          {loading ? (
-            <View style={styles.centerContent}>
-              <ActivityIndicator size="large" color={COLORS.primary} />
-            </View>
-          ) : clients.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No clients assigned yet</Text>
-            </View>
-          ) : (
-            clients.map(client => {
-              const clientProgress = Math.round(Math.random() * 100);
-              return (
-                <TouchableOpacity 
-                  key={client.id} 
-                  style={styles.clientCard}
-                  onPress={() => navigation.navigate('ClientDetails', { clientId: client.id })}
-                >
-                  <View style={styles.clientHeader}>
-                    <Text style={styles.clientAvatar}>{client.avatar || '👤'}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.clientName}>{client.name}</Text>
-                      {client.emotionalFocus && (
-                        <Text style={styles.clientDiagnosis}>{client.emotionalFocus[0]}</Text>
-                      )}
-                    </View>
-                  </View>
-                  <View style={styles.progressSection}>
-                    <Text style={styles.progressLabel}>Progress: {clientProgress}%</Text>
-                    <View style={styles.progressBar}>
-                      <View style={[styles.progressBarFill, { width: clientProgress + '%' }]} />
-                    </View>
-                  </View>
-                  <View style={styles.sessionInfo}>
-                    <Text style={styles.sessionLabel}>📊 Details</Text>
-                    <Text style={styles.chevron}>→</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })
-          )}
-        </ScrollView>
-        <View style={styles.tabBar}>
-          {['home', 'clients', 'notes'].map(tab => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
-              onPress={() => setActiveTab(tab)}
-            >
-              <Text style={styles.tabLabel}>
-                {tab === 'home' ? '🏠 Home' : tab === 'clients' ? '👥 Clients' : '📝 Notes'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </SafeAreaView>
-    );
-  }
+const TabBarItem = ({ focused, icon, label }) => (
+  <View style={styles.tabItemContainer}>
+    <View style={[styles.tabIndicator, focused && styles.tabIndicatorActive]} />
+    <Feather
+      name={icon}
+      size={20}
+      color={focused ? INK : COLORS.gray400}
+      style={styles.tabIcon}
+    />
+    <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>{label}</Text>
+  </View>
+);
 
-  if (activeTab === 'notes') {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Session Notes</Text>
-            <TouchableOpacity style={styles.backButton} onPress={() => setActiveTab('home')}>
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-          </View>
+const screenOptions = {
+  headerShown: false,
+  contentStyle: { backgroundColor: COLORS.background },
+};
 
-          {SESSION_NOTES.map((note, i) => (
-            <View key={i} style={styles.noteCard}>
-              <View style={styles.noteHeader}>
-                <Text style={styles.noteClient}>{note.clientName}</Text>
-                <Text style={styles.noteMood}>{note.mood}</Text>
-              </View>
-              <Text style={styles.noteDate}>{note.date}</Text>
-              <Text style={styles.noteContent}>{note.progress}</Text>
-            </View>
-          ))}
-        </ScrollView>
-        <View style={styles.tabBar}>
-          {['home', 'clients', 'notes'].map(tab => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
-              onPress={() => setActiveTab(tab)}
-            >
-              <Text style={styles.tabLabel}>
-                {tab === 'home' ? '🏠 Home' : tab === 'clients' ? '👥 Clients' : '📝 Notes'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </SafeAreaView>
-    );
-  }
+const OverviewStack = () => (
+  <Stack.Navigator screenOptions={screenOptions}>
+    <Stack.Screen name="OverviewTabScreen" component={OverviewTab} />
+    <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
+  </Stack.Navigator>
+);
 
+const ClientsStack = () => (
+  <Stack.Navigator screenOptions={screenOptions}>
+    <Stack.Screen name="ClientsTabScreen" component={ClientsTab} />
+  </Stack.Navigator>
+);
+
+const WorksheetsStack = () => (
+  <Stack.Navigator screenOptions={screenOptions}>
+    <Stack.Screen name="WorksheetsTabScreen" component={WorksheetsTab} />
+    <Stack.Screen name="WorksheetLibrary" component={WorksheetLibraryScreen} />
+  </Stack.Navigator>
+);
+
+const InsightsStack = () => (
+  <Stack.Navigator screenOptions={screenOptions}>
+    <Stack.Screen name="InsightsTabScreen" component={InsightsTab} />
+  </Stack.Navigator>
+);
+
+const ProfileStack = () => (
+  <Stack.Navigator screenOptions={screenOptions}>
+    <Stack.Screen name="ProfileTabScreen" component={ProfileTab} />
+    <Stack.Screen name="Settings" component={SettingsScreen} />
+    <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
+  </Stack.Navigator>
+);
+
+const TherapistTabs = () => {
+  const insets = useSafeAreaInsets();
+  const bottomInset = insets.bottom || (Platform.OS === 'android' ? 8 : 0);
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <Text style={styles.greeting}>Welcome, Dr. Smith 👋</Text>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
-        </View>
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: [
+          styles.tabBar,
+          {
+            height: 72 + bottomInset,
+            paddingBottom: bottomInset,
+          },
+        ],
+        tabBarShowLabel: false,
+        tabBarActiveTintColor: INK,
+        tabBarInactiveTintColor: COLORS.gray400,
+        lazy: true,
+      }}
+    >
+      <Tab.Screen
+        name="Overview"
+        component={OverviewStack}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarItem focused={focused} icon="grid" label="Overview" />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Clients"
+        component={ClientsStack}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarItem focused={focused} icon="users" label="Clients" />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Worksheets"
+        component={WorksheetsStack}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarItem focused={focused} icon="file-text" label="Worksheets" />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Insights"
+        component={InsightsStack}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarItem focused={focused} icon="bar-chart-2" label="Analytics" />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileStack}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarItem focused={focused} icon="user" label="Profile" />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+};
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Today's Schedule</Text>
-          <View style={styles.scheduleItem}>
-            <Text style={styles.scheduleTime}>2:00 PM</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.scheduleClient}>Alex (Teen)</Text>
-              <Text style={styles.scheduleType}>Individual Session</Text>
-            </View>
-            <TouchableOpacity style={styles.joinButton}>
-              <Text style={styles.joinButtonText}>Join</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.scheduleItem}>
-            <Text style={styles.scheduleTime}>4:00 PM</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.scheduleClient}>Emma (Child)</Text>
-              <Text style={styles.scheduleType}>Game-based Therapy</Text>
-            </View>
-            <TouchableOpacity style={styles.joinButton}>
-              <Text style={styles.joinButtonText}>Join</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+const TherapistDrawer = () => (
+  <Drawer.Navigator
+    drawerContent={(props) => <DrawerContent {...props} />}
+    screenOptions={{
+      headerShown: false,
+      drawerType: 'slide',
+      drawerStyle: {
+        width: '78%',
+        backgroundColor: COLORS.background,
+      },
+    }}
+  >
+    <Drawer.Screen name="DashboardTabs" component={TherapistTabs} />
+  </Drawer.Navigator>
+);
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Client Overview</Text>
-          <View style={styles.overviewRow}>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewNumber}>12</Text>
-              <Text style={styles.overviewLabel}>Active Clients</Text>
-            </View>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewNumber}>8</Text>
-              <Text style={styles.overviewLabel}>Completing Worksheets</Text>
-            </View>
-            <View style={styles.overviewItem}>
-              <Text style={styles.overviewNumber}>85%</Text>
-              <Text style={styles.overviewLabel}>Avg Progress</Text>
-            </View>
-          </View>
-        </View>
+// Wraps the drawer with modal-style detail screens so navigation up from a tab
+// (e.g. open a ClientDetails) opens above the tab bar.
+const TherapistRoot = createNativeStackNavigator();
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Recent Activity</Text>
-          <View style={styles.activityItem}>
-            <Text style={styles.activityIcon}>✓</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.activityText}>Alex completed Anxiety Worksheet</Text>
-              <Text style={styles.activityTime}>2 hours ago</Text>
-            </View>
-          </View>
-          <View style={styles.activityItem}>
-            <Text style={styles.activityIcon}>⭐</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.activityText}>John & Sarah unlocked new module</Text>
-              <Text style={styles.activityTime}>1 day ago</Text>
-            </View>
-          </View>
-        </View>
-      </ScrollView>
-
-      <View style={styles.tabBar}>
-        {['home', 'clients', 'notes'].map(tab => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
-            onPress={() => setActiveTab(tab)}
-          >
-            <Text style={styles.tabLabel}>
-              {tab === 'home' ? '🏠 Home' : tab === 'clients' ? '👥 Clients' : '📝 Notes'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </SafeAreaView>
+export default function TherapistDashboard() {
+  return (
+    <ErrorBoundary>
+      <TherapistRoot.Navigator
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: COLORS.background },
+        }}
+      >
+        <TherapistRoot.Screen name="TherapistDrawer" component={TherapistDrawer} />
+        <TherapistRoot.Screen
+          name="ClientDetails"
+          component={ClientDetailsScreen}
+        />
+        <TherapistRoot.Screen
+          name="AssignWorksheet"
+          component={AssignWorksheetScreen}
+          options={{ presentation: 'modal' }}
+        />
+        <TherapistRoot.Screen
+          name="AddNote"
+          component={AddNoteScreen}
+          options={{ presentation: 'modal' }}
+        />
+        <TherapistRoot.Screen
+          name="ManageContent"
+          component={ManageContentScreen}
+        />
+        <TherapistRoot.Screen
+          name="CreateWorksheet"
+          component={CreateWorksheetScreen}
+          options={{ presentation: 'modal' }}
+        />
+        <TherapistRoot.Screen
+          name="CreateAffirmation"
+          component={CreateContentScreen}
+          initialParams={{ contentType: 'affirmation' }}
+          options={{ presentation: 'modal' }}
+        />
+        <TherapistRoot.Screen
+          name="CreateCopingTool"
+          component={CreateContentScreen}
+          initialParams={{ contentType: 'copingTool' }}
+          options={{ presentation: 'modal' }}
+        />
+        <TherapistRoot.Screen
+          name="CreateResource"
+          component={CreateContentScreen}
+          initialParams={{ contentType: 'resource' }}
+          options={{ presentation: 'modal' }}
+        />
+        <TherapistRoot.Screen
+          name="CreateDateIdea"
+          component={CreateContentScreen}
+          initialParams={{ contentType: 'dateIdea' }}
+          options={{ presentation: 'modal' }}
+        />
+        <TherapistRoot.Screen
+          name="AddClientResource"
+          component={AddClientResourceScreen}
+          options={{ presentation: 'modal' }}
+        />
+      </TherapistRoot.Navigator>
+    </ErrorBoundary>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    paddingBottom: 80,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING['2xl'],
-  },
-  greeting: {
-    fontSize: TYPOGRAPHY['2xl'],
-    fontWeight: '700',
-    color: COLORS.primary,
-  },
-  title: {
-    fontSize: TYPOGRAPHY['2xl'],
-    fontWeight: '700',
-    color: COLORS.primary,
-  },
-  backButton: {
-    padding: SPACING.sm,
-  },
-  backButtonText: {
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  logoutButton: {
-    backgroundColor: COLORS.error,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  logoutText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '600',
-  },
-  card: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
-  },
-  cardTitle: {
-    fontSize: TYPOGRAPHY.base,
-    fontWeight: '600',
-    color: COLORS.gray700,
-    marginBottom: SPACING.md,
-  },
-  scheduleItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray200,
-    gap: SPACING.md,
-  },
-  scheduleTime: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '600',
-    color: COLORS.primary,
-    minWidth: 50,
-  },
-  scheduleClient: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '600',
-    color: COLORS.gray700,
-  },
-  scheduleType: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.gray500,
-    marginTop: 2,
-  },
-  joinButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  joinButtonText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.xs,
-    fontWeight: '600',
-  },
-  overviewRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  overviewItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  overviewNumber: {
-    fontSize: TYPOGRAPHY['2xl'],
-    fontWeight: '700',
-    color: COLORS.primary,
-  },
-  overviewLabel: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.gray500,
-    marginTop: SPACING.xs,
-  },
-  activityItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray200,
-    gap: SPACING.md,
-  },
-  activityIcon: {
-    fontSize: TYPOGRAPHY.lg,
-  },
-  activityText: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '500',
-    color: COLORS.gray700,
-  },
-  activityTime: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.gray500,
-    marginTop: 2,
-  },
-  clientCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
-  },
-  clientHeader: {
-    marginBottom: SPACING.md,
-  },
-  clientName: {
-    fontSize: TYPOGRAPHY.base,
-    fontWeight: '600',
-    color: COLORS.gray700,
-  },
-  clientDiagnosis: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.gray500,
-    marginTop: 2,
-  },
-  progressSection: {
-    marginBottom: SPACING.md,
-  },
-  progressLabel: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '500',
-    color: COLORS.gray700,
-    marginBottom: SPACING.xs,
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: COLORS.gray200,
-    borderRadius: BORDER_RADIUS.full,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: COLORS.primary,
-  },
-  sessionInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.gray200,
-  },
-  sessionLabel: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.gray700,
-  },
-  viewButton: {
-    backgroundColor: COLORS.gray100,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  viewButtonText: {
-    color: COLORS.primary,
-    fontSize: TYPOGRAPHY.xs,
-    fontWeight: '600',
-  },
-  noteCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
-  },
-  noteHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  noteClient: {
-    fontSize: TYPOGRAPHY.base,
-    fontWeight: '600',
-    color: COLORS.gray700,
-  },
-  noteMood: {
-    fontSize: TYPOGRAPHY.lg,
-  },
-  noteDate: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.gray500,
-    marginBottom: SPACING.sm,
-  },
-  noteContent: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.gray700,
-    lineHeight: 20,
-  },
   tabBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     backgroundColor: COLORS.white,
-    flexDirection: 'row',
     borderTopWidth: 1,
-    borderTopColor: COLORS.gray200,
+    borderTopColor: COLORS.gray100,
+    paddingTop: 0,
+    paddingHorizontal: SPACING.sm,
   },
-  tabItem: {
-    flex: 1,
-    paddingVertical: SPACING.md,
+  tabItemContainer: {
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
+    width: 58,
+    paddingTop: 8,
   },
-  tabItemActive: {
-    backgroundColor: COLORS.primaryLighter,
+  tabIndicator: {
+    width: 24,
+    height: 2,
+    backgroundColor: 'transparent',
+    borderRadius: 1,
+    marginBottom: 6,
   },
+  tabIndicatorActive: {
+    backgroundColor: INK,
+  },
+  tabIcon: { marginBottom: 3 },
   tabLabel: {
-    fontSize: TYPOGRAPHY.xs,
+    fontSize: 10,
     fontWeight: '600',
-    color: COLORS.gray700,
+    color: COLORS.gray400,
+    letterSpacing: 0.2,
   },
-  centerContent: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: SPACING['2xl'],
-  },
-  emptyContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: SPACING['3xl'],
-  },
-  emptyText: {
-    fontSize: TYPOGRAPHY.base,
-    color: COLORS.gray500,
-  },
-  clientAvatar: {
-    fontSize: 40,
-    marginRight: SPACING.md,
-  },
-  chevron: {
-    fontSize: TYPOGRAPHY.lg,
-    color: COLORS.primary,
+  tabLabelActive: {
+    color: INK,
+    fontWeight: '700',
   },
 });

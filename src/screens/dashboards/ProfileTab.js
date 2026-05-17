@@ -45,7 +45,6 @@ export default function ProfileTab({ navigation }) {
     { id: 'toolbox', emoji: '🧰', label: 'Coping Toolbox', screen: 'CopingToolbox' },
     { id: 'progress', emoji: '📊', label: 'My Progress', screen: 'Progress' },
     { id: 'journal', emoji: '📔', label: 'Journal', screen: 'Journal' },
-    { id: 'badges', emoji: '🏆', label: 'Badges', screen: 'Badges' },
     { id: 'resources', emoji: '📚', label: 'Resources', screen: 'Resources' },
     { id: 'notifications', emoji: '🔔', label: 'Notifications', screen: 'Notifications' },
     { id: 'settings', emoji: '⚙️', label: 'Settings', screen: 'Settings' },

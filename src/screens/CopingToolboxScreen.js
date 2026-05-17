@@ -1,7 +1,24 @@
-import React from 'react';
-import { View, StyleSheet, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/colors';
+import dataStore from '../utils/dataStore';
+
+const TYPE_EMOJI = {
+  breathing: '🌬️',
+  grounding: '🌳',
+  visualization: '🏖️',
+  relaxation: '🧘',
+  mindfulness: '🌿',
+};
+
+const TYPE_COLOR = {
+  breathing: '#E0F4FF',
+  grounding: '#D1FAE5',
+  visualization: '#FEF3C7',
+  relaxation: '#FFE4E6',
+  mindfulness: '#F2EEFF',
+};
 
 const TOOLS = [
   {
@@ -43,6 +60,33 @@ const TOOLS = [
 ];
 
 export default function CopingToolboxScreen({ navigation }) {
+  const [customTools, setCustomTools] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        await dataStore.initialize();
+        const [u, tools] = await Promise.all([
+          dataStore.getCurrentUser(),
+          dataStore.getCopingTools(),
+        ]);
+        const role = u?.role;
+        const filtered = (tools || []).filter(
+          (t) => !t.audience || t.audience === 'all' || t.audience === role
+        );
+        setCustomTools(filtered);
+      } catch (e) {
+        console.log('[CopingToolbox] load error', e);
+      }
+    })();
+  }, []);
+
+  const showToolInstructions = (tool) => {
+    Alert.alert(tool.title, tool.instructions || tool.description, [
+      { text: 'Got it', style: 'default' },
+    ]);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -86,6 +130,38 @@ export default function CopingToolboxScreen({ navigation }) {
             <Text style={styles.arrow}>›</Text>
           </TouchableOpacity>
         ))}
+
+        {customTools.length > 0 && (
+          <>
+            <Text style={styles.sectionLabel}>MORE FROM YOUR THERAPIST</Text>
+            {customTools.map((tool) => {
+              const emoji = TYPE_EMOJI[tool.type] || '🧘';
+              const color = TYPE_COLOR[tool.type] || '#F2EEFF';
+              return (
+                <TouchableOpacity
+                  key={tool.id}
+                  activeOpacity={0.85}
+                  style={styles.toolCard}
+                  onPress={() => showToolInstructions(tool)}
+                >
+                  <View style={[styles.iconBox, { backgroundColor: color }]}>
+                    <Text style={styles.iconEmoji}>{emoji}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.toolTitle}>{tool.title}</Text>
+                    <Text style={styles.toolDesc} numberOfLines={2}>
+                      {tool.description}
+                    </Text>
+                    {tool.duration ? (
+                      <Text style={styles.toolDuration}>⏱️ {tool.duration}</Text>
+                    ) : null}
+                  </View>
+                  <Text style={styles.arrow}>›</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </>
+        )}
 
         <View style={styles.tipCard}>
           <Text style={styles.tipTitle}>💡 Remember</Text>
@@ -158,6 +234,15 @@ const styles = StyleSheet.create({
   toolDesc: { fontSize: TYPOGRAPHY.xs, color: COLORS.gray500, marginBottom: 4 },
   toolDuration: { fontSize: TYPOGRAPHY.xs, color: COLORS.primary, fontWeight: '600' },
   arrow: { fontSize: TYPOGRAPHY.xl, color: COLORS.gray400, marginLeft: SPACING.sm },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.gray500,
+    letterSpacing: 1.4,
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.xs,
+  },
   tipCard: {
     backgroundColor: COLORS.primaryLighter,
     borderRadius: BORDER_RADIUS.lg,

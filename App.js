@@ -24,9 +24,9 @@ import ProgressScreen from './src/screens/ProgressScreen';
 import JournalScreen from './src/screens/JournalScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import TherapyProgramsScreen from './src/screens/TherapyProgramsScreen';
+import ProgramDetailsScreen from './src/screens/ProgramDetailsScreen';
 import ResourcesScreen from './src/screens/ResourcesScreen';
 import NotificationCenterScreen from './src/screens/NotificationCenterScreen';
-import BadgesScreen from './src/screens/BadgesScreen';
 import CopingToolboxScreen from './src/screens/CopingToolboxScreen';
 import BreathingExerciseScreen from './src/screens/coping/BreathingExerciseScreen';
 import GroundingExerciseScreen from './src/screens/coping/GroundingExerciseScreen';
@@ -186,9 +186,9 @@ export default function App() {
                   <Stack.Screen name="Journal" component={JournalScreen} />
                   <Stack.Screen name="Settings" component={SettingsScreen} />
                   <Stack.Screen name="TherapyPrograms" component={TherapyProgramsScreen} />
+                  <Stack.Screen name="ProgramDetails" component={ProgramDetailsScreen} />
                   <Stack.Screen name="Resources" component={ResourcesScreen} />
                   <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
-                  <Stack.Screen name="Badges" component={BadgesScreen} />
                   <Stack.Screen name="CopingToolbox" component={CopingToolboxScreen} />
                   <Stack.Screen name="BreathingExercise" component={BreathingExerciseScreen} />
                   <Stack.Screen name="GroundingExercise" component={GroundingExerciseScreen} />

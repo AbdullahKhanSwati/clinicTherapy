@@ -26,8 +26,12 @@ export default function WorksheetScreen({ route, navigation }) {
       try {
         await dataStore.initialize();
 
-        // Load worksheet template
-        const ws = WORKSHEET_TEMPLATES[worksheetId];
+        // Load worksheet — check built-in templates first, then custom (admin-created)
+        let ws = WORKSHEET_TEMPLATES[worksheetId];
+        if (!ws) {
+          const customList = await dataStore.getCustomWorksheets();
+          ws = (customList || []).find((w) => w.id === worksheetId);
+        }
         setWorksheet(ws);
 
         // Load assignment if provided

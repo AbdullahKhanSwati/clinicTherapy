@@ -9,7 +9,7 @@ import {
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createDrawerNavigator } from '@react-navigation/drawer';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { COLORS, TYPOGRAPHY, SPACING, SHADOWS } from '../../constants/colors';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
@@ -26,7 +26,6 @@ import MoodCheckInScreen from '../MoodCheckInScreen';
 import ProgressScreen from '../ProgressScreen';
 import JournalScreen from '../JournalScreen';
 import SettingsScreen from '../SettingsScreen';
-import BadgesScreen from '../BadgesScreen';
 import ResourcesScreen from '../ResourcesScreen';
 import NotificationCenterScreen from '../NotificationCenterScreen';
 
@@ -67,7 +66,6 @@ const HomeStack = () => (
     <Stack.Screen name="MoodCheckIn" component={MoodCheckInScreen} />
     <Stack.Screen name="Progress" component={ProgressScreen} />
     <Stack.Screen name="Journal" component={JournalScreen} />
-    <Stack.Screen name="Badges" component={BadgesScreen} />
   </Stack.Navigator>
 );
 
@@ -93,7 +91,6 @@ const MoodStack = () => (
     <Stack.Screen name="MoodRewardsTabScreen" component={MoodRewardsTab} />
     <Stack.Screen name="MoodCheckIn" component={MoodCheckInScreen} />
     <Stack.Screen name="Progress" component={ProgressScreen} />
-    <Stack.Screen name="Badges" component={BadgesScreen} />
   </Stack.Navigator>
 );
 
@@ -107,7 +104,6 @@ const ProfileStack = () => (
     <Stack.Screen name="ProfileTabScreen" component={ProfileTab} />
     <Stack.Screen name="Progress" component={ProgressScreen} />
     <Stack.Screen name="Journal" component={JournalScreen} />
-    <Stack.Screen name="Badges" component={BadgesScreen} />
     <Stack.Screen name="Resources" component={ResourcesScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
     <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
@@ -115,11 +111,20 @@ const ProfileStack = () => (
 );
 
 // Bottom tabs navigator
-const ChildDashboardTabs = () => (
+const ChildDashboardTabs = () => {
+  const insets = useSafeAreaInsets();
+  const bottomInset = insets.bottom || (Platform.OS === 'android' ? 8 : 0);
+  return (
   <Tab.Navigator
     screenOptions={({ route }) => ({
       headerShown: false,
-      tabBarStyle: styles.tabBar,
+      tabBarStyle: [
+        styles.tabBar,
+        {
+          height: 60 + bottomInset,
+          paddingBottom: bottomInset,
+        },
+      ],
       tabBarShowLabel: false,
       tabBarActiveTintColor: COLORS.primary,
       tabBarInactiveTintColor: COLORS.gray400,
@@ -169,7 +174,8 @@ const ChildDashboardTabs = () => (
       }}
     />
   </Tab.Navigator>
-);
+  );
+};
 
 // Drawer navigator wrapper
 const ChildDashboardWithDrawer = () => {
@@ -202,7 +208,6 @@ export default ChildDashboardWithDrawer;
 
 const styles = StyleSheet.create({
   tabBar: {
-    height: Platform.OS === 'ios' ? 84 : 64,
     backgroundColor: COLORS.white,
     borderTopWidth: 1,
     borderTopColor: COLORS.gray200,

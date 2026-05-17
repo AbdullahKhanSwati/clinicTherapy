@@ -1,282 +1,226 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  StyleSheet,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
-import { useAuth } from '../../../App';
+import React from 'react';
+import { View, StyleSheet, Text, Platform } from 'react-native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createDrawerNavigator } from '@react-navigation/drawer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 
-export default function CouplesDashboard({ navigation }) {
-  const { signOut } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState(null);
+import { COLORS, SPACING } from '../../constants/colors';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        await dataStore.initialize();
-        const user = await dataStore.getCurrentUser();
-        setCurrentUser(user);
-      } catch (error) {
-        console.error('[v0] Error loading data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+// Couples tab screens
+import HomeTab from './couples/HomeTab';
+import TogetherTab from './couples/TogetherTab';
+import InsightsTab from './couples/InsightsTab';
+import ProfileTab from './couples/ProfileTab';
+import DrawerContent from './couples/DrawerContent';
 
-    loadData();
-  }, []);
+// Detail screens reused from app stack
+import WorksheetScreen from '../WorksheetScreen';
+import MoodCheckInScreen from '../MoodCheckInScreen';
+import ProgressScreen from '../ProgressScreen';
+import JournalScreen from '../JournalScreen';
+import SettingsScreen from '../SettingsScreen';
+import ResourcesScreen from '../ResourcesScreen';
+import NotificationCenterScreen from '../NotificationCenterScreen';
+import TherapyProgramsScreen from '../TherapyProgramsScreen';
+import ProgramDetailsScreen from '../ProgramDetailsScreen';
+import CopingToolboxScreen from '../CopingToolboxScreen';
+import BreathingExerciseScreen from '../coping/BreathingExerciseScreen';
+import GroundingExerciseScreen from '../coping/GroundingExerciseScreen';
+import VisualizationScreen from '../coping/VisualizationScreen';
+import AffirmationsScreen from '../coping/AffirmationsScreen';
+import AvatarCustomizerScreen from '../AvatarCustomizerScreen';
 
-  const handleLogout = async () => {
-    await signOut();
-  };
+const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
+const Drawer = createDrawerNavigator();
 
-  const SHARED_ACTIVITIES = [
-    { id: 1, title: 'Emotionally Focused Therapy', progress: 50 },
-    { id: 2, title: 'Communication Skills', progress: 70 },
-    { id: 3, title: 'Conflict Resolution', progress: 40 },
-  ];
+const BLUSH = '#D4536B';
+const INK = '#1A2332';
 
+const TabBarItem = ({ focused, icon, label }) => (
+  <View style={styles.tabItemContainer}>
+    <View style={[styles.tabIndicator, focused && styles.tabIndicatorActive]} />
+    <Feather
+      name={icon}
+      size={20}
+      color={focused ? INK : COLORS.gray400}
+      style={styles.tabIcon}
+    />
+    <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>{label}</Text>
+  </View>
+);
+
+const screenOptions = {
+  headerShown: false,
+  contentStyle: { backgroundColor: COLORS.background },
+};
+
+const HomeStack = () => (
+  <Stack.Navigator screenOptions={screenOptions}>
+    <Stack.Screen name="HomeTabScreen" component={HomeTab} />
+    <Stack.Screen name="MoodCheckIn" component={MoodCheckInScreen} />
+    <Stack.Screen name="Journal" component={JournalScreen} />
+    <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
+    <Stack.Screen name="Affirmations" component={AffirmationsScreen} />
+    <Stack.Screen name="CopingToolbox" component={CopingToolboxScreen} />
+    <Stack.Screen name="TherapyPrograms" component={TherapyProgramsScreen} />
+    <Stack.Screen name="ProgramDetails" component={ProgramDetailsScreen} />
+  </Stack.Navigator>
+);
+
+const TogetherStack = () => (
+  <Stack.Navigator screenOptions={screenOptions}>
+    <Stack.Screen name="TogetherTabScreen" component={TogetherTab} />
+    <Stack.Screen name="Worksheet" component={WorksheetScreen} />
+    <Stack.Screen name="CopingToolbox" component={CopingToolboxScreen} />
+    <Stack.Screen name="BreathingExercise" component={BreathingExerciseScreen} />
+    <Stack.Screen name="GroundingExercise" component={GroundingExerciseScreen} />
+    <Stack.Screen name="Visualization" component={VisualizationScreen} />
+    <Stack.Screen name="Affirmations" component={AffirmationsScreen} />
+    <Stack.Screen name="TherapyPrograms" component={TherapyProgramsScreen} />
+    <Stack.Screen name="ProgramDetails" component={ProgramDetailsScreen} />
+  </Stack.Navigator>
+);
+
+const InsightsStack = () => (
+  <Stack.Navigator screenOptions={screenOptions}>
+    <Stack.Screen name="InsightsTabScreen" component={InsightsTab} />
+    <Stack.Screen name="Progress" component={ProgressScreen} />
+    <Stack.Screen name="Journal" component={JournalScreen} />
+  </Stack.Navigator>
+);
+
+const ProfileStack = () => (
+  <Stack.Navigator screenOptions={screenOptions}>
+    <Stack.Screen name="ProfileTabScreen" component={ProfileTab} />
+    <Stack.Screen name="AvatarCustomizer" component={AvatarCustomizerScreen} />
+    <Stack.Screen name="Progress" component={ProgressScreen} />
+    <Stack.Screen name="Journal" component={JournalScreen} />
+    <Stack.Screen name="Resources" component={ResourcesScreen} />
+    <Stack.Screen name="CopingToolbox" component={CopingToolboxScreen} />
+    <Stack.Screen name="Settings" component={SettingsScreen} />
+    <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
+  </Stack.Navigator>
+);
+
+const CouplesTabs = () => {
+  const insets = useSafeAreaInsets();
+  const bottomInset = insets.bottom || (Platform.OS === 'android' ? 8 : 0);
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <Text style={styles.greeting}>💑 Couples Therapy</Text>
-          <View style={styles.headerButtons}>
-            <TouchableOpacity 
-              style={styles.headerButton}
-              onPress={() => navigation.navigate('Progress')}
-            >
-              <Text style={styles.headerIcon}>📊</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.headerButton}
-              onPress={() => navigation.navigate('Settings')}
-            >
-              <Text style={styles.headerIcon}>⚙️</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: [
+          styles.tabBar,
+          {
+            height: 72 + bottomInset,
+            paddingBottom: bottomInset,
+          },
+        ],
+        tabBarShowLabel: false,
+        tabBarActiveTintColor: INK,
+        tabBarInactiveTintColor: COLORS.gray400,
+        lazy: true,
+      }}
+    >
+      <Tab.Screen
+        name="Home"
+        component={HomeStack}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarItem focused={focused} icon="home" label="Home" />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Together"
+        component={TogetherStack}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarItem focused={focused} icon="heart" label="Together" />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Insights"
+        component={InsightsStack}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarItem focused={focused} icon="bar-chart-2" label="Insights" />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileStack}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarItem focused={focused} icon="user" label="Profile" />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+};
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Relationship Score</Text>
-          <View style={styles.scoreContainer}>
-            <Text style={styles.scoreNumber}>78</Text>
-            <Text style={styles.scoreLabel}>out of 100</Text>
-          </View>
-          <View style={styles.scoreBar}>
-            <View style={[styles.scoreBarFill, { width: '78%' }]} />
-          </View>
-          <Text style={styles.scoreMessage}>Your relationship is strong and improving! 💪</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Shared Exercises</Text>
-          {SHARED_ACTIVITIES.map(activity => (
-            <View key={activity.id} style={styles.activityRow}>
-              <Text style={styles.activityName}>{activity.title}</Text>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressBarFill, { width: activity.progress + '%' }]} />
-              </View>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Communication Log</Text>
-          <View style={styles.logEntry}>
-            <Text style={styles.logDate}>Today</Text>
-            <Text style={styles.logMessage}>Great conversation about our future plans</Text>
-          </View>
-          <View style={styles.logEntry}>
-            <Text style={styles.logDate}>Yesterday</Text>
-            <Text style={styles.logMessage}>Worked through a conflict successfully</Text>
-          </View>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Next Session</Text>
-          <View style={styles.sessionCard}>
-            <Text style={styles.sessionIcon}>📅</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sessionTitle}>Emotionally Focused Therapy</Text>
-              <Text style={styles.sessionTime}>Thursday, May 16 at 6:00 PM</Text>
-            </View>
-            <TouchableOpacity style={styles.sessionButton}>
-              <Text style={styles.sessionButtonText}>Join</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+export default function CouplesDashboard() {
+  return (
+    <ErrorBoundary>
+      <Drawer.Navigator
+        drawerContent={(props) => <DrawerContent {...props} />}
+        screenOptions={{
+          headerShown: false,
+          drawerType: 'slide',
+          drawerStyle: {
+            width: '78%',
+            backgroundColor: COLORS.background,
+          },
+        }}
+      >
+        <Drawer.Screen name="DashboardTabs" component={CouplesTabs} />
+      </Drawer.Navigator>
+    </ErrorBoundary>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  tabBar: {
     backgroundColor: COLORS.white,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING['2xl'],
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING['2xl'],
-  },
-  greeting: {
-    fontSize: TYPOGRAPHY['2xl'],
-    fontWeight: '700',
-    color: COLORS.primary,
-  },
-  logoutButton: {
-    backgroundColor: COLORS.error,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray100,
+    paddingTop: 0,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
   },
-  logoutText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '600',
-  },
-  headerButtons: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.primaryLighter,
-    justifyContent: 'center',
+  tabItemContainer: {
     alignItems: 'center',
+    justifyContent: 'flex-start',
+    width: 70,
+    paddingTop: 8,
   },
-  headerIcon: {
-    fontSize: TYPOGRAPHY.lg,
+  tabIndicator: {
+    width: 24,
+    height: 2,
+    backgroundColor: 'transparent',
+    borderRadius: 1,
+    marginBottom: 6,
   },
-  card: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
+  tabIndicatorActive: {
+    backgroundColor: INK,
   },
-  cardTitle: {
-    fontSize: TYPOGRAPHY.base,
+  tabIcon: {
+    marginBottom: 3,
+  },
+  tabLabel: {
+    fontSize: 11,
     fontWeight: '600',
-    color: COLORS.gray700,
-    marginBottom: SPACING.md,
+    color: COLORS.gray400,
+    letterSpacing: 0.2,
   },
-  scoreContainer: {
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  scoreNumber: {
-    fontSize: TYPOGRAPHY['3xl'],
+  tabLabelActive: {
+    color: INK,
     fontWeight: '700',
-    color: COLORS.primary,
-  },
-  scoreLabel: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.gray500,
-  },
-  scoreBar: {
-    height: 8,
-    backgroundColor: COLORS.gray200,
-    borderRadius: BORDER_RADIUS.full,
-    marginBottom: SPACING.md,
-    overflow: 'hidden',
-  },
-  scoreBarFill: {
-    height: '100%',
-    backgroundColor: COLORS.success,
-  },
-  scoreMessage: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.success,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  activityRow: {
-    marginBottom: SPACING.md,
-  },
-  activityName: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '500',
-    color: COLORS.gray700,
-    marginBottom: SPACING.xs,
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: COLORS.gray200,
-    borderRadius: BORDER_RADIUS.full,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: COLORS.primary,
-  },
-  logEntry: {
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray200,
-  },
-  logDate: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.gray500,
-    marginBottom: 2,
-  },
-  logMessage: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.gray700,
-  },
-  sessionCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
-  },
-  sessionIcon: {
-    fontSize: TYPOGRAPHY['2xl'],
-  },
-  sessionTitle: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '600',
-    color: COLORS.gray700,
-  },
-  sessionTime: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.gray500,
-    marginTop: 2,
-  },
-  sessionButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  sessionButtonText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.xs,
-    fontWeight: '600',
   },
 });

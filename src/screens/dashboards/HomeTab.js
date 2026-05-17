@@ -63,7 +63,6 @@ export default function HomeTab({ navigation }) {
     { id: 'mood', emoji: '😊', label: 'Check Mood', screen: 'MoodCheckIn' },
     { id: 'toolbox', emoji: '🧰', label: 'Coping Toolbox', screen: 'CopingToolbox' },
     { id: 'journal', emoji: '📔', label: 'Journal', screen: 'Journal' },
-    { id: 'badges', emoji: '🏆', label: 'My Badges', screen: 'Badges' },
   ];
 
   const openWorksheet = (assignment) => {
