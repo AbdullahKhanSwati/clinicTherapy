@@ -26,6 +26,14 @@ import ManageContentScreen from '../therapist/ManageContentScreen';
 import CreateContentScreen from '../therapist/CreateContentScreen';
 import CreateWorksheetScreen from '../therapist/CreateWorksheetScreen';
 import AddClientResourceScreen from '../therapist/AddClientResourceScreen';
+import ModuleHubScreen from '../therapist/ModuleHubScreen';
+import CoupleManagementScreen from '../therapist/CoupleManagementScreen';
+import CoupleDetailScreen from '../therapist/CoupleDetailScreen';
+import CoupleSharedGoalsScreen from '../therapist/CoupleSharedGoalsScreen';
+import AdminPairCoupleScreen from '../therapist/AdminPairCoupleScreen';
+import ManageUsersScreen from '../therapist/ManageUsersScreen';
+import AssignParentScreen from '../therapist/AssignParentScreen';
+import AssignChildScreen from '../therapist/AssignChildScreen';
 import SettingsScreen from '../SettingsScreen';
 import NotificationCenterScreen from '../NotificationCenterScreen';
 
@@ -236,6 +244,40 @@ export default function TherapistDashboard() {
         <TherapistRoot.Screen
           name="AddClientResource"
           component={AddClientResourceScreen}
+          options={{ presentation: 'modal' }}
+        />
+        <TherapistRoot.Screen
+          name="ModuleHub"
+          component={ModuleHubScreen}
+        />
+        <TherapistRoot.Screen
+          name="CoupleManagement"
+          component={CoupleManagementScreen}
+        />
+        <TherapistRoot.Screen
+          name="CoupleDetail"
+          component={CoupleDetailScreen}
+        />
+        <TherapistRoot.Screen
+          name="CoupleSharedGoals"
+          component={CoupleSharedGoalsScreen}
+        />
+        <TherapistRoot.Screen
+          name="AdminPairCouple"
+          component={AdminPairCoupleScreen}
+        />
+        <TherapistRoot.Screen
+          name="ManageUsers"
+          component={ManageUsersScreen}
+        />
+        <TherapistRoot.Screen
+          name="AssignParent"
+          component={AssignParentScreen}
+          options={{ presentation: 'modal' }}
+        />
+        <TherapistRoot.Screen
+          name="AssignChild"
+          component={AssignChildScreen}
           options={{ presentation: 'modal' }}
         />
       </TherapistRoot.Navigator>

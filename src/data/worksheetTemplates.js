@@ -1,7 +1,10 @@
 // Worksheet Templates - Define structure and questions for all worksheets
 // This system allows unlimited scalability - each worksheet is data-driven
 
-export const WORKSHEET_TEMPLATES = {
+import { GOTTMAN_WEEKS } from './gottmanProgram';
+import { PSYCHODYNAMIC_WORKSHEETS } from './psychodynamicWorksheets';
+
+const BASE_TEMPLATES = {
   // EMOTION IDENTIFICATION WORKSHEETS
   ws_emotion_identification: {
     id: 'ws_emotion_identification',
@@ -607,4 +610,13 @@ export const WORKSHEET_TEMPLATES = {
     ],
     completionMessage: 'Set a calendar reminder to revisit this in 3 months.',
   },
+};
+
+// Merge built-in templates with the Gottman 12-week program and the
+// psychodynamic worksheet suite. Admin-created custom worksheets are
+// pulled from dataStore.getCustomWorksheets() at runtime.
+export const WORKSHEET_TEMPLATES = {
+  ...BASE_TEMPLATES,
+  ...GOTTMAN_WEEKS,
+  ...PSYCHODYNAMIC_WORKSHEETS,
 };

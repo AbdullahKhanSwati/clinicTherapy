@@ -90,8 +90,7 @@ export default function TherapistOverviewTab() {
   const openDrawer = () => navigation.dispatch(DrawerActions.openDrawer());
 
   const openClient = (client) => {
-    const parent = navigation.getParent?.() || navigation;
-    parent.navigate('ClientDetails', { clientId: client.id });
+    navigation.navigate('ClientDetails', { clientId: client.id });
   };
 
   // ===== Metrics =====
@@ -296,10 +295,9 @@ export default function TherapistOverviewTab() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.quickAction}
-                onPress={() => {
-                  const parent = navigation.getParent?.() || navigation;
-                  parent.navigate('AssignWorksheet', { worksheetId: null });
-                }}
+                onPress={() =>
+                  navigation.navigate('AssignWorksheet', { worksheetId: null })
+                }
                 activeOpacity={0.85}
               >
                 <Feather name="send" size={20} color={INK} />

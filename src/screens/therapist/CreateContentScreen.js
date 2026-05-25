@@ -237,11 +237,17 @@ const CONFIG = {
 
 export default function CreateContentScreen({ route, navigation }) {
   const contentType = route?.params?.contentType || 'affirmation';
+  const defaultAudience = route?.params?.defaultAudience || null;
   const config = CONFIG[contentType] || CONFIG.affirmation;
   const [values, setValues] = useState(() => {
     const initial = {};
     config.fields.forEach((f) => {
-      initial[f.key] = f.defaultValue || '';
+      // If the route specified a defaultAudience, pre-fill the audience field
+      if (f.key === 'audience' && defaultAudience) {
+        initial[f.key] = defaultAudience;
+      } else {
+        initial[f.key] = f.defaultValue || '';
+      }
     });
     return initial;
   });

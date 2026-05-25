@@ -32,16 +32,24 @@ const PRIMARY_NAV = [
 ];
 
 const QUICK_LINKS = [
-  { id: 'mood', label: 'Mood Check-In', screen: 'MoodCheckIn' },
+  { id: 'checkin', label: 'Daily Check-In', screen: 'DailyCheckIn' },
+  { id: 'appreciation', label: 'Send Appreciation', screen: 'AppreciationExchange' },
+  { id: 'repair', label: 'Send Repair Request', screen: 'RepairRequest' },
+  { id: 'pause', label: 'We Need a Pause', screen: 'ConflictPause' },
+];
+
+const RELATIONSHIP_LINKS = [
+  { id: 'pairing', label: 'Manage Partner Pairing', screen: 'CouplePairing' },
   { id: 'journal', label: 'Couple Journal', screen: 'Journal' },
-  { id: 'breath', label: 'Breathe Together', screen: 'BreathingExercise' },
-  { id: 'affirm', label: 'Affirmations', screen: 'Affirmations' },
+  { id: 'mood', label: 'Mood Check-In', screen: 'MoodCheckIn' },
 ];
 
 const MORE_LINKS = [
   { id: 'progress', label: 'Progress', screen: 'Progress' },
   { id: 'programs', label: 'Therapy Programs', screen: 'TherapyPrograms' },
   { id: 'toolbox', label: 'Coping Toolbox', screen: 'CopingToolbox' },
+  { id: 'breath', label: 'Breathing', screen: 'BreathingExercise' },
+  { id: 'affirm', label: 'Affirmations', screen: 'Affirmations' },
   { id: 'resources', label: 'Resources', screen: 'Resources' },
   { id: 'notifications', label: 'Notifications', screen: 'Notifications' },
   { id: 'settings', label: 'Settings', screen: 'Settings' },
@@ -137,7 +145,7 @@ export default function CouplesDrawerContent({ navigation }) {
           ))}
         </View>
 
-        <Text style={styles.sectionLabel}>QUICK ACTIONS</Text>
+        <Text style={styles.sectionLabel}>DAILY TOOLS</Text>
         <View style={styles.section}>
           {QUICK_LINKS.map((it, i) => (
             <TouchableOpacity
@@ -145,6 +153,24 @@ export default function CouplesDrawerContent({ navigation }) {
               style={[
                 styles.linkItem,
                 i < QUICK_LINKS.length - 1 && styles.linkItemBorder,
+              ]}
+              onPress={() => goToScreen(it.screen)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.linkLabel}>{it.label}</Text>
+              <Text style={styles.linkChev}>→</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.sectionLabel}>RELATIONSHIP</Text>
+        <View style={styles.section}>
+          {RELATIONSHIP_LINKS.map((it, i) => (
+            <TouchableOpacity
+              key={it.id}
+              style={[
+                styles.linkItem,
+                i < RELATIONSHIP_LINKS.length - 1 && styles.linkItemBorder,
               ]}
               onPress={() => goToScreen(it.screen)}
               activeOpacity={0.7}

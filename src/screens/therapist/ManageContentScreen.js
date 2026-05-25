@@ -85,6 +85,10 @@ const AUDIENCE_COLORS = {
 
 export default function ManageContentScreen({ route, navigation }) {
   const contentType = route?.params?.contentType || 'affirmation';
+  // Optional filters set by ModuleHub
+  const audienceFilter = route?.params?.audience || null; // 'child'|'teen'|'couples'|'family'|null
+  const programFilter = route?.params?.programId || null; // 'gottman_12week'|'psychodynamic_suite'|null
+  const moduleLabel = route?.params?.moduleLabel || null;
   const config = CONFIG[contentType] || CONFIG.affirmation;
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -106,13 +110,35 @@ export default function ManageContentScreen({ route, navigation }) {
       } else if (contentType === 'dateIdea') {
         data = await dataStore.getDateIdeas();
       }
-      setItems(data || []);
+
+      // Apply filters
+      let filtered = data || [];
+      if (audienceFilter) {
+        filtered = filtered.filter((item) => {
+          if (contentType === 'worksheet') {
+            return item.targetAudience === audienceFilter;
+          }
+          return (
+            item.audience === audienceFilter || item.audience === 'all'
+          );
+        });
+      }
+      if (programFilter) {
+        filtered = filtered.filter((item) => item.programId === programFilter);
+      }
+
+      // For Gottman, sort by week so they appear in program order
+      if (programFilter === 'gottman_12week') {
+        filtered.sort((a, b) => (a.week || 0) - (b.week || 0));
+      }
+
+      setItems(filtered);
     } catch (e) {
       console.log('[ManageContent] load error', e);
     } finally {
       setLoading(false);
     }
-  }, [contentType]);
+  }, [contentType, audienceFilter, programFilter]);
 
   useFocusEffect(
     useCallback(() => {
@@ -182,7 +208,13 @@ export default function ManageContentScreen({ route, navigation }) {
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: SPACING.md }}>
           <Text style={[styles.eyebrow, { color: config.accent }]}>
-            {config.eyebrow}
+            {programFilter === 'gottman_12week'
+              ? '12-WEEK GOTTMAN PROGRAM'
+              : programFilter === 'psychodynamic_suite'
+              ? 'PSYCHODYNAMIC SUITE'
+              : moduleLabel
+              ? moduleLabel.toUpperCase()
+              : config.eyebrow}
           </Text>
           <Text style={styles.headerTitle}>{config.title}</Text>
         </View>
@@ -212,9 +244,15 @@ export default function ManageContentScreen({ route, navigation }) {
         ) : items.length === 0 ? (
           <View style={styles.emptyCard}>
             <Feather name="inbox" size={32} color={COLORS.gray300} />
-            <Text style={styles.emptyTitle}>Nothing here yet</Text>
+            <Text style={styles.emptyTitle}>
+              {audienceFilter || programFilter
+                ? 'Nothing matches this filter'
+                : 'Nothing here yet'}
+            </Text>
             <Text style={styles.emptyText}>
-              Tap "Create" above to add your first {config.title.toLowerCase()}.
+              {audienceFilter
+                ? `No ${config.title.toLowerCase()} tagged for ${audienceFilter}. Create one below.`
+                : `Tap "Create" above to add your first ${config.title.toLowerCase()}.`}
             </Text>
             <TouchableOpacity
               style={[styles.emptyCta, { backgroundColor: config.accent }]}

@@ -33,6 +33,13 @@ import VisualizationScreen from '../coping/VisualizationScreen';
 import AffirmationsScreen from '../coping/AffirmationsScreen';
 import AvatarCustomizerScreen from '../AvatarCustomizerScreen';
 
+// Couples sync screens (new)
+import DailyCheckInScreen from '../couples/DailyCheckInScreen';
+import ConflictPauseScreen from '../couples/ConflictPauseScreen';
+import RepairRequestScreen from '../couples/RepairRequestScreen';
+import AppreciationExchangeScreen from '../couples/AppreciationExchangeScreen';
+import CouplePairingScreen from '../couples/CouplePairingScreen';
+
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 const Drawer = createDrawerNavigator();
@@ -166,22 +173,62 @@ const CouplesTabs = () => {
   );
 };
 
+const CouplesDrawer = () => (
+  <Drawer.Navigator
+    drawerContent={(props) => <DrawerContent {...props} />}
+    screenOptions={{
+      headerShown: false,
+      drawerType: 'slide',
+      drawerStyle: {
+        width: '78%',
+        backgroundColor: COLORS.background,
+      },
+    }}
+  >
+    <Drawer.Screen name="DashboardTabs" component={CouplesTabs} />
+  </Drawer.Navigator>
+);
+
+// Root stack — wraps the drawer so couples-sync modals (DailyCheckIn,
+// ConflictPause, RepairRequest, AppreciationExchange, CouplePairing) can be
+// presented above the tab bar and drawer from any nested screen.
+const CouplesRoot = createNativeStackNavigator();
+
 export default function CouplesDashboard() {
   return (
     <ErrorBoundary>
-      <Drawer.Navigator
-        drawerContent={(props) => <DrawerContent {...props} />}
+      <CouplesRoot.Navigator
         screenOptions={{
           headerShown: false,
-          drawerType: 'slide',
-          drawerStyle: {
-            width: '78%',
-            backgroundColor: COLORS.background,
-          },
+          contentStyle: { backgroundColor: COLORS.background },
         }}
       >
-        <Drawer.Screen name="DashboardTabs" component={CouplesTabs} />
-      </Drawer.Navigator>
+        <CouplesRoot.Screen name="CouplesDrawer" component={CouplesDrawer} />
+        <CouplesRoot.Screen
+          name="DailyCheckIn"
+          component={DailyCheckInScreen}
+          options={{ presentation: 'modal' }}
+        />
+        <CouplesRoot.Screen
+          name="ConflictPause"
+          component={ConflictPauseScreen}
+          options={{ presentation: 'modal' }}
+        />
+        <CouplesRoot.Screen
+          name="RepairRequest"
+          component={RepairRequestScreen}
+          options={{ presentation: 'modal' }}
+        />
+        <CouplesRoot.Screen
+          name="AppreciationExchange"
+          component={AppreciationExchangeScreen}
+          options={{ presentation: 'modal' }}
+        />
+        <CouplesRoot.Screen
+          name="CouplePairing"
+          component={CouplePairingScreen}
+        />
+      </CouplesRoot.Navigator>
     </ErrorBoundary>
   );
 }

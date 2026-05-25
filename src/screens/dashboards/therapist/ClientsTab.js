@@ -84,8 +84,7 @@ export default function TherapistClientsTab() {
   const openDrawer = () => navigation.dispatch(DrawerActions.openDrawer());
 
   const openClient = (client) => {
-    const parent = navigation.getParent?.() || navigation;
-    parent.navigate('ClientDetails', { clientId: client.id });
+    navigation.navigate('ClientDetails', { clientId: client.id });
   };
 
   const enriched = useMemo(() => {

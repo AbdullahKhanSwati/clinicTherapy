@@ -1,288 +1,223 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  StyleSheet,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
-import { useAuth } from '../../../App';
+import React from 'react';
+import { View, StyleSheet, Text, Platform } from 'react-native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createDrawerNavigator } from '@react-navigation/drawer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 
-export default function FamilyDashboard({ navigation }) {
-  const { signOut } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState(null);
+import { COLORS, SPACING, BORDER_RADIUS } from '../../constants/colors';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        await dataStore.initialize();
-        const user = await dataStore.getCurrentUser();
-        setCurrentUser(user);
-      } catch (error) {
-        console.error('[v0] Error loading data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+// Parent tab screens
+import HomeTab from './parent/HomeTab';
+import ChildrenTab from './parent/ChildrenTab';
+import InsightsTab from './parent/InsightsTab';
+import ProfileTab from './parent/ProfileTab';
+import DrawerContent from './parent/DrawerContent';
 
-    loadData();
-  }, []);
+// Reused detail screens
+import WorksheetScreen from '../WorksheetScreen';
+import MoodCheckInScreen from '../MoodCheckInScreen';
+import ProgressScreen from '../ProgressScreen';
+import JournalScreen from '../JournalScreen';
+import SettingsScreen from '../SettingsScreen';
+import ResourcesScreen from '../ResourcesScreen';
+import NotificationCenterScreen from '../NotificationCenterScreen';
+import CopingToolboxScreen from '../CopingToolboxScreen';
+import BreathingExerciseScreen from '../coping/BreathingExerciseScreen';
+import GroundingExerciseScreen from '../coping/GroundingExerciseScreen';
+import VisualizationScreen from '../coping/VisualizationScreen';
+import AffirmationsScreen from '../coping/AffirmationsScreen';
+import AvatarCustomizerScreen from '../AvatarCustomizerScreen';
 
-  const handleLogout = async () => {
-    await signOut();
-  };
+const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
+const Drawer = createDrawerNavigator();
 
-  const FAMILY_MEMBERS = [
-    { id: 1, name: 'Emma', role: 'Child', mood: '😊', lastActive: '30 min ago' },
-    { id: 2, name: 'Tom', role: 'Teen', mood: '😐', lastActive: '2 hours ago' },
-    { id: 3, name: 'Sarah', role: 'Parent', mood: '😌', lastActive: 'online' },
-  ];
+const INK = '#1A2332';
+const SAGE = '#15803D';
 
-  const PARENTING_TOPICS = [
-    { id: 1, title: 'Handling Tantrums', progress: 60 },
-    { id: 2, title: 'Setting Boundaries', progress: 45 },
-    { id: 3, title: 'Emotional Validation', progress: 75 },
-  ];
+const TabBarItem = ({ focused, icon, label }) => (
+  <View style={styles.tabItemContainer}>
+    <View style={[styles.tabIndicator, focused && styles.tabIndicatorActive]} />
+    <Feather
+      name={icon}
+      size={20}
+      color={focused ? INK : COLORS.gray400}
+      style={styles.tabIcon}
+    />
+    <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>
+      {label}
+    </Text>
+  </View>
+);
 
+const screenOptions = {
+  headerShown: false,
+  contentStyle: { backgroundColor: COLORS.background },
+};
+
+const HomeStack = () => (
+  <Stack.Navigator screenOptions={screenOptions}>
+    <Stack.Screen name="HomeTabScreen" component={HomeTab} />
+    <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
+  </Stack.Navigator>
+);
+
+const ChildrenStack = () => (
+  <Stack.Navigator screenOptions={screenOptions}>
+    <Stack.Screen name="ChildrenTabScreen" component={ChildrenTab} />
+  </Stack.Navigator>
+);
+
+const InsightsStack = () => (
+  <Stack.Navigator screenOptions={screenOptions}>
+    <Stack.Screen name="InsightsTabScreen" component={InsightsTab} />
+  </Stack.Navigator>
+);
+
+const ProfileStack = () => (
+  <Stack.Navigator screenOptions={screenOptions}>
+    <Stack.Screen name="ProfileTabScreen" component={ProfileTab} />
+  </Stack.Navigator>
+);
+
+const ParentTabs = () => {
+  const insets = useSafeAreaInsets();
+  const bottomInset = insets.bottom || (Platform.OS === 'android' ? 8 : 0);
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <Text style={styles.greeting}>👨‍👩‍👧‍👦 Family Hub</Text>
-          <View style={styles.headerButtons}>
-            <TouchableOpacity 
-              style={styles.headerButton}
-              onPress={() => navigation.navigate('Progress')}
-            >
-              <Text style={styles.headerIcon}>📊</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.headerButton}
-              onPress={() => navigation.navigate('Settings')}
-            >
-              <Text style={styles.headerIcon}>⚙️</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: [
+          styles.tabBar,
+          { height: 72 + bottomInset, paddingBottom: bottomInset },
+        ],
+        tabBarShowLabel: false,
+        tabBarActiveTintColor: INK,
+        tabBarInactiveTintColor: COLORS.gray400,
+        lazy: true,
+      }}
+    >
+      <Tab.Screen
+        name="Home"
+        component={HomeStack}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarItem focused={focused} icon="home" label="Home" />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Children"
+        component={ChildrenStack}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarItem focused={focused} icon="users" label="Children" />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Insights"
+        component={InsightsStack}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarItem focused={focused} icon="bar-chart-2" label="Insights" />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileStack}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarItem focused={focused} icon="user" label="Profile" />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+};
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Family Members</Text>
-          {FAMILY_MEMBERS.map(member => (
-            <View key={member.id} style={styles.memberCard}>
-              <View style={styles.memberInfo}>
-                <Text style={styles.memberName}>{member.name}</Text>
-                <Text style={styles.memberRole}>{member.role}</Text>
-              </View>
-              <Text style={styles.memberMood}>{member.mood}</Text>
-              <Text style={styles.memberStatus}>{member.lastActive}</Text>
-            </View>
-          ))}
-        </View>
+const ParentDrawer = () => (
+  <Drawer.Navigator
+    drawerContent={(props) => <DrawerContent {...props} />}
+    screenOptions={{
+      headerShown: false,
+      drawerType: 'slide',
+      drawerStyle: { width: '78%', backgroundColor: COLORS.background },
+    }}
+  >
+    <Drawer.Screen name="DashboardTabs" component={ParentTabs} />
+  </Drawer.Navigator>
+);
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Parenting Resources</Text>
-          {PARENTING_TOPICS.map(topic => (
-            <View key={topic.id} style={styles.topicRow}>
-              <Text style={styles.topicName}>{topic.title}</Text>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressBarFill, { width: topic.progress + '%' }]} />
-              </View>
-            </View>
-          ))}
-        </View>
+const ParentRoot = createNativeStackNavigator();
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Family Milestones</Text>
-          <View style={styles.milestone}>
-            <Text style={styles.milestoneIcon}>🎉</Text>
-            <View>
-              <Text style={styles.milestoneTitle}>Emma completed Anxiety Management</Text>
-              <Text style={styles.milestoneDate}>2 days ago</Text>
-            </View>
-          </View>
-          <View style={styles.milestone}>
-            <Text style={styles.milestoneIcon}>⭐</Text>
-            <View>
-              <Text style={styles.milestoneTitle}>Tom reached 10-day streak</Text>
-              <Text style={styles.milestoneDate}>1 week ago</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Family Check-in</Text>
-          <TouchableOpacity style={styles.actionButton}>
-            <Text style={styles.actionButtonText}>Schedule Weekly Check-in</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionButton, styles.actionButtonSecondary]}>
-            <Text style={styles.actionButtonTextSecondary}>View Family Reports</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+export default function FamilyDashboard() {
+  return (
+    <ErrorBoundary>
+      <ParentRoot.Navigator screenOptions={screenOptions}>
+        <ParentRoot.Screen name="ParentDrawer" component={ParentDrawer} />
+        <ParentRoot.Screen name="ChildDetail" component={ChildDetailPlaceholder} />
+        <ParentRoot.Screen name="Worksheet" component={WorksheetScreen} />
+        <ParentRoot.Screen name="MoodCheckIn" component={MoodCheckInScreen} />
+        <ParentRoot.Screen name="Progress" component={ProgressScreen} />
+        <ParentRoot.Screen name="Journal" component={JournalScreen} />
+        <ParentRoot.Screen name="Settings" component={SettingsScreen} />
+        <ParentRoot.Screen name="Resources" component={ResourcesScreen} />
+        <ParentRoot.Screen name="Notifications" component={NotificationCenterScreen} />
+        <ParentRoot.Screen name="CopingToolbox" component={CopingToolboxScreen} />
+        <ParentRoot.Screen name="BreathingExercise" component={BreathingExerciseScreen} />
+        <ParentRoot.Screen name="GroundingExercise" component={GroundingExerciseScreen} />
+        <ParentRoot.Screen name="Visualization" component={VisualizationScreen} />
+        <ParentRoot.Screen name="Affirmations" component={AffirmationsScreen} />
+        <ParentRoot.Screen name="AvatarCustomizer" component={AvatarCustomizerScreen} />
+      </ParentRoot.Navigator>
+    </ErrorBoundary>
   );
 }
 
+// Lightweight read-only child detail for parents (full version can come later)
+function ChildDetailPlaceholder({ route, navigation }) {
+  const ChildDetailScreen = require('./parent/ChildDetailScreen').default;
+  return <ChildDetailScreen route={route} navigation={navigation} />;
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  tabBar: {
     backgroundColor: COLORS.white,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray100,
+    paddingTop: 0,
+    paddingHorizontal: SPACING.sm,
   },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING['2xl'],
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  tabItemContainer: {
     alignItems: 'center',
-    marginBottom: SPACING['2xl'],
+    justifyContent: 'flex-start',
+    width: 64,
+    paddingTop: 8,
   },
-  greeting: {
-    fontSize: TYPOGRAPHY['2xl'],
+  tabIndicator: {
+    width: 24,
+    height: 2,
+    backgroundColor: 'transparent',
+    borderRadius: 1,
+    marginBottom: 6,
+  },
+  tabIndicatorActive: {
+    backgroundColor: INK,
+  },
+  tabIcon: { marginBottom: 3 },
+  tabLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.gray400,
+    letterSpacing: 0.2,
+  },
+  tabLabelActive: {
+    color: INK,
     fontWeight: '700',
-    color: COLORS.primary,
-  },
-  logoutButton: {
-    backgroundColor: COLORS.error,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  logoutText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '600',
-  },
-  headerButtons: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.primaryLighter,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerIcon: {
-    fontSize: TYPOGRAPHY.lg,
-  },
-  card: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
-  },
-  cardTitle: {
-    fontSize: TYPOGRAPHY.base,
-    fontWeight: '600',
-    color: COLORS.gray700,
-    marginBottom: SPACING.md,
-  },
-  memberCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  memberInfo: {
-    flex: 1,
-  },
-  memberName: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '600',
-    color: COLORS.gray700,
-  },
-  memberRole: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.gray500,
-    marginTop: 2,
-  },
-  memberMood: {
-    fontSize: TYPOGRAPHY.lg,
-  },
-  memberStatus: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.gray500,
-  },
-  topicRow: {
-    marginBottom: SPACING.md,
-  },
-  topicName: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '500',
-    color: COLORS.gray700,
-    marginBottom: SPACING.xs,
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: COLORS.gray200,
-    borderRadius: BORDER_RADIUS.full,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: COLORS.primary,
-  },
-  milestone: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray200,
-    gap: SPACING.md,
-  },
-  milestoneIcon: {
-    fontSize: TYPOGRAPHY.lg,
-  },
-  milestoneTitle: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '500',
-    color: COLORS.gray700,
-  },
-  milestoneDate: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.gray500,
-    marginTop: 2,
-  },
-  actionButton: {
-    backgroundColor: COLORS.primary,
-    borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.md,
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  actionButtonText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '600',
-  },
-  actionButtonSecondary: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-  },
-  actionButtonTextSecondary: {
-    color: COLORS.primary,
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '600',
   },
 });

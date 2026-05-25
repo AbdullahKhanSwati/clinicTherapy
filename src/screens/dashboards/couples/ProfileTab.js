@@ -76,8 +76,18 @@ export default function CouplesProfileTab() {
     {
       label: 'Couple',
       items: [
+        { id: 'pairing', label: 'Partner Pairing', screen: 'CouplePairing' },
         { id: 'avatar', label: 'Customize Avatar', screen: 'AvatarCustomizer' },
         { id: 'journal', label: 'Couple Journal', screen: 'Journal' },
+      ],
+    },
+    {
+      label: 'Daily Tools',
+      items: [
+        { id: 'checkin', label: 'Daily Check-In', screen: 'DailyCheckIn' },
+        { id: 'appreciation', label: 'Appreciation Exchange', screen: 'AppreciationExchange' },
+        { id: 'repair', label: 'Send Repair Request', screen: 'RepairRequest' },
+        { id: 'pause', label: 'We Need a Pause', screen: 'ConflictPause' },
       ],
     },
     {

@@ -66,6 +66,17 @@ const PARTNER_LOOKUP = {
   partner2: 'partner1',
 };
 
+const isCheckinFromToday = (checkin) => {
+  if (!checkin || !checkin.date) return false;
+  const d = new Date(checkin.date);
+  const today = new Date();
+  return (
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate()
+  );
+};
+
 export default function CouplesHomeTab() {
   const navigation = useNavigation();
   const [user, setUser] = useState(null);
@@ -73,6 +84,11 @@ export default function CouplesHomeTab() {
   const [userMood, setUserMood] = useState(null);
   const [partnerMood, setPartnerMood] = useState(null);
   const [pending, setPending] = useState([]);
+  const [userCheckin, setUserCheckin] = useState(null);
+  const [partnerCheckin, setPartnerCheckin] = useState(null);
+  const [pendingRepair, setPendingRepair] = useState(null);
+  const [latestAppreciation, setLatestAppreciation] = useState(null);
+  const [isPaired, setIsPaired] = useState(true);
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(
@@ -87,22 +103,46 @@ export default function CouplesHomeTab() {
           setUser(u);
 
           if (u) {
-            const partnerId = PARTNER_LOOKUP[u.id];
+            // Determine partner via the new pairing system, fall back to lookup
+            let partnerId = await dataStore.getPartnerIdForUser(u.id);
+            if (!partnerId) partnerId = PARTNER_LOOKUP[u.id];
+            if (!cancelled) setIsPaired(!!partnerId);
+
             if (partnerId) {
               const p = await dataStore.getUserById(partnerId);
               if (!cancelled) setPartner(p);
 
               const partnerMoods = await dataStore.getMoodEntriesByUser(partnerId);
               if (!cancelled) setPartnerMood((partnerMoods || [])[0] || null);
+
+              const pCheckin = await dataStore.getLatestCheckinForUser(partnerId);
+              if (!cancelled) setPartnerCheckin(pCheckin);
             }
 
-            const [userMoods, all] = await Promise.all([
-              dataStore.getMoodEntriesByUser(u.id),
-              dataStore.getAssignmentsByClient(u.id),
-            ]);
+            const [userMoods, all, myCheckin, repairs, appreciations] =
+              await Promise.all([
+                dataStore.getMoodEntriesByUser(u.id),
+                dataStore.getAssignmentsByClient(u.id),
+                dataStore.getLatestCheckinForUser(u.id),
+                dataStore.getRepairRequestsForUser(u.id),
+                dataStore.getAppreciationsForUser(u.id),
+              ]);
             if (cancelled) return;
             setUserMood((userMoods || [])[0] || null);
             setPending((all || []).filter((a) => a.status !== 'completed'));
+            setUserCheckin(myCheckin);
+
+            // Unread incoming repair request (sent to me, awaiting my response)
+            const incomingRepair = (repairs || []).find(
+              (r) => r.toUserId === u.id && r.status === 'sent'
+            );
+            setPendingRepair(incomingRepair || null);
+
+            // Latest appreciation received
+            const latestAp = (appreciations || []).find(
+              (a) => a.toUserId === u.id
+            );
+            setLatestAppreciation(latestAp || null);
           }
         } catch (e) {
           console.log('[Couples HomeTab] load error', e);
@@ -138,37 +178,42 @@ export default function CouplesHomeTab() {
   // Mock: days together
   const daysTogether = 1247;
 
+  const openParent = (screen, params) => {
+    const parent = navigation.getParent?.() || navigation;
+    parent.navigate(screen, params);
+  };
+
   const QUICK_ACTIONS = [
     {
       id: 'checkin',
-      label: 'Check In',
-      sub: 'Log your mood',
+      label: 'Daily Check-In',
+      sub: 'Mood · Connection · Stress',
       mark: '01',
-      onPress: () => navigation.navigate('MoodCheckIn'),
+      onPress: () => openParent('DailyCheckIn'),
       variant: 'dark',
     },
     {
-      id: 'journal',
-      label: 'Journal',
-      sub: 'Shared reflection',
+      id: 'appreciation',
+      label: 'Appreciation',
+      sub: 'Send a daily note',
       mark: '02',
-      onPress: () => navigation.navigate('Journal'),
+      onPress: () => openParent('AppreciationExchange'),
       variant: 'cream',
     },
     {
-      id: 'session',
-      label: 'Next Session',
-      sub: 'Thursday · 6:00 PM',
+      id: 'pause',
+      label: 'We Need a Pause',
+      sub: 'Reset during conflict',
       mark: '03',
-      onPress: () => navigation.navigate('TherapyPrograms'),
+      onPress: () => openParent('ConflictPause'),
       variant: 'accent',
     },
     {
-      id: 'breathe',
-      label: 'Reset',
-      sub: 'Breathe together',
+      id: 'repair',
+      label: 'Repair Request',
+      sub: 'Reach for reconnection',
       mark: '04',
-      onPress: () => navigation.navigate('CopingToolbox'),
+      onPress: () => openParent('RepairRequest'),
       variant: 'light',
     },
   ];
@@ -261,10 +306,86 @@ export default function CouplesHomeTab() {
           </View>
         </View>
 
+        {/* Pairing banner — only when not paired */}
+        {!isPaired && (
+          <TouchableOpacity
+            style={styles.alertBanner}
+            onPress={() => {
+              const parent = navigation.getParent?.() || navigation;
+              parent.navigate('CouplePairing');
+            }}
+            activeOpacity={0.85}
+          >
+            <View style={styles.alertIcon}>
+              <Text style={styles.alertIconText}>⚭</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.alertTitle}>Link your partner</Text>
+              <Text style={styles.alertSub}>
+                Share check-ins, appreciations, and repair requests.
+              </Text>
+            </View>
+            <Text style={styles.alertChev}>→</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Pending repair banner */}
+        {pendingRepair && (
+          <TouchableOpacity
+            style={[styles.alertBanner, styles.alertBannerRepair]}
+            onPress={() => {
+              const parent = navigation.getParent?.() || navigation;
+              parent.navigate('RepairRequest');
+            }}
+            activeOpacity={0.85}
+          >
+            <View style={[styles.alertIcon, styles.alertIconRepair]}>
+              <Text style={styles.alertIconText}>♥</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.alertTitleRepair}>Repair request waiting</Text>
+              <Text style={styles.alertSub} numberOfLines={1}>
+                "{pendingRepair.message}"
+              </Text>
+            </View>
+            <Text style={[styles.alertChev, { color: '#D4536B' }]}>→</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Today's check-in status — only if not completed today */}
+        {!isCheckinFromToday(userCheckin) && (
+          <TouchableOpacity
+            style={[styles.alertBanner, styles.alertBannerCheckin]}
+            onPress={() => {
+              const parent = navigation.getParent?.() || navigation;
+              parent.navigate('DailyCheckIn');
+            }}
+            activeOpacity={0.85}
+          >
+            <View style={[styles.alertIcon, styles.alertIconCheckin]}>
+              <Text style={styles.alertIconText}>◷</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.alertTitle}>Today's check-in is open</Text>
+              <Text style={styles.alertSub}>
+                {partnerCheckin && isCheckinFromToday(partnerCheckin)
+                  ? `${partnerName} already checked in. Your turn.`
+                  : '2 minutes — mood, connection, stress.'}
+              </Text>
+            </View>
+            <Text style={styles.alertChev}>→</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Mood comparison */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionLabel}>TODAY'S PULSE</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('MoodCheckIn')}>
+          <TouchableOpacity
+            onPress={() => {
+              const parent = navigation.getParent?.() || navigation;
+              parent.navigate('DailyCheckIn');
+            }}
+          >
             <Text style={styles.sectionAction}>Update</Text>
           </TouchableOpacity>
         </View>
@@ -616,6 +737,69 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: BLUSH,
     letterSpacing: 0.3,
+  },
+
+  /* Alert banners (pairing, repair, check-in) */
+  alertBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.gray100,
+    borderLeftWidth: 3,
+    borderLeftColor: INK,
+  },
+  alertBannerRepair: {
+    borderLeftColor: BLUSH,
+    backgroundColor: '#FFF7F8',
+  },
+  alertBannerCheckin: {
+    borderLeftColor: INK,
+  },
+  alertIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: INK + '10',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.md,
+  },
+  alertIconRepair: { backgroundColor: BLUSH + '15' },
+  alertIconCheckin: { backgroundColor: COLORS.gray100 },
+  alertIconText: {
+    fontSize: 18,
+    color: INK,
+    fontWeight: '700',
+  },
+  alertTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: INK,
+    letterSpacing: -0.2,
+    marginBottom: 2,
+  },
+  alertTitleRepair: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: BLUSH,
+    letterSpacing: -0.2,
+    marginBottom: 2,
+  },
+  alertSub: {
+    fontSize: 11,
+    color: COLORS.gray500,
+    fontWeight: '500',
+    lineHeight: 15,
+  },
+  alertChev: {
+    fontSize: 20,
+    color: COLORS.gray400,
+    fontWeight: '700',
+    marginLeft: SPACING.sm,
   },
 
   /* Mood tiles */

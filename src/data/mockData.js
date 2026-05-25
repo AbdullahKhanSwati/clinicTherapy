@@ -45,16 +45,39 @@ export const MOCK_USERS = {
     profileColor: '#FFA500',
     avatar: '👩',
   },
-  // Family/Parent user
+  // Family/Parent users
   parent1: {
     id: 'parent1',
-    name: 'Mom',
-    email: 'mom@example.com',
+    name: 'Maria Chen',
+    email: 'maria.chen@example.com',
     role: 'family',
     age: 42,
-    children: ['child1'],
-    profileColor: '#00D9A3',
+    children: ['child1', 'teen1'],
+    parentingRelationship: 'mother',
+    profileColor: '#15803D',
     avatar: '👩‍👧',
+  },
+  parent2: {
+    id: 'parent2',
+    name: 'David Park',
+    email: 'david.park@example.com',
+    role: 'family',
+    age: 45,
+    children: ['child2'],
+    parentingRelationship: 'father',
+    profileColor: '#0891B2',
+    avatar: '👨',
+  },
+  // Extra child for parent2 to demonstrate parent management
+  child2: {
+    id: 'child2',
+    name: 'Lily',
+    email: 'lily@example.com',
+    role: 'child',
+    age: 7,
+    emotionalFocus: ['Confidence', 'Sleep'],
+    profileColor: '#FFD93D',
+    avatar: '👧',
   },
   // Therapist
   therapist1: {
@@ -63,7 +86,7 @@ export const MOCK_USERS = {
     email: 'dr.smith@therapy.com',
     role: 'therapist',
     specializations: ['Anxiety', 'Child Therapy', 'Couples Therapy'],
-    clients: ['child1', 'teen1', 'partner1', 'partner2'],
+    clients: ['child1', 'child2', 'teen1', 'partner1', 'partner2', 'parent1', 'parent2'],
   },
 };
 
@@ -719,3 +742,160 @@ export const DATE_IDEAS = [
 // CUSTOM WORKSHEETS — created by admin (merged with WORKSHEET_TEMPLATES at runtime)
 // ============================
 export const CUSTOM_WORKSHEETS = [];
+
+// ============================
+// COUPLE PAIRINGS — couple-account linking
+// ============================
+// Each pairing links two user IDs as a couple. Either partner can disconnect.
+// The seeded entry mirrors the demo couple (partner1 ↔ partner2).
+export const COUPLE_PAIRINGS = [
+  {
+    id: 'cp_demo',
+    partnerAId: 'partner1',
+    partnerBId: 'partner2',
+    inviteCode: 'DEMO-2025',
+    status: 'active',
+    createdAt: new Date(Date.now() - 86400000 * 365).toISOString(),
+    pairedAt: new Date(Date.now() - 86400000 * 365).toISOString(),
+  },
+];
+
+// ============================
+// PARTNER CHECK-INS — daily/weekly relationship pulse
+// Mood / Connection / Stress (1-10) + need + appreciation
+// ============================
+export const PARTNER_CHECKINS = [
+  {
+    id: 'pci_1',
+    userId: 'partner1',
+    date: new Date(Date.now() - 86400000).toISOString(),
+    mood: 7,
+    connection: 8,
+    stress: 5,
+    need: 'A quiet morning coffee together',
+    appreciation: 'You listened without trying to fix anything last night.',
+  },
+  {
+    id: 'pci_2',
+    userId: 'partner2',
+    date: new Date(Date.now() - 86400000).toISOString(),
+    mood: 6,
+    connection: 7,
+    stress: 7,
+    need: 'A few minutes of quiet decompression after work',
+    appreciation: 'The morning coffee you made me yesterday.',
+  },
+];
+
+// ============================
+// REPAIR REQUESTS — quick repair messages between partners
+// ============================
+export const REPAIR_REQUESTS = [
+  {
+    id: 'rr_demo',
+    fromUserId: 'partner1',
+    toUserId: 'partner2',
+    message: 'I felt hurt and want to reconnect.',
+    sentAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    status: 'acknowledged',
+    response: 'I hear you. Can we talk after dinner?',
+    respondedAt: new Date(Date.now() - 86400000 * 2 + 3600000).toISOString(),
+  },
+];
+
+// Pre-set repair message templates
+export const REPAIR_MESSAGE_TEMPLATES = [
+  { id: 'reconnect', label: 'I felt hurt and want to reconnect.' },
+  { id: 'talk_later', label: 'Can we talk later today?' },
+  { id: 'reassurance', label: 'I need reassurance.' },
+  { id: 'apology', label: 'I need an apology.' },
+  { id: 'understand', label: 'I want to understand what happened.' },
+];
+
+// ============================
+// APPRECIATIONS — daily exchange of fondness
+// One appreciation, memory, quality admired, or thank-you
+// ============================
+export const APPRECIATIONS = [
+  {
+    id: 'ap_1',
+    fromUserId: 'partner1',
+    toUserId: 'partner2',
+    type: 'thank_you',
+    text: 'Thank you for handling the grocery run yesterday.',
+    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+  },
+  {
+    id: 'ap_2',
+    fromUserId: 'partner2',
+    toUserId: 'partner1',
+    type: 'quality',
+    text: 'I admire how patient you are with my family.',
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+  },
+  {
+    id: 'ap_3',
+    fromUserId: 'partner1',
+    toUserId: 'partner2',
+    type: 'memory',
+    text: 'I keep thinking about our walk last Sunday — quiet and easy.',
+    createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+  },
+];
+
+// ============================
+// CONFLICT PAUSES — log of "We Need a Pause" sessions
+// ============================
+export const CONFLICT_PAUSES = [];
+
+// ============================
+// SHARED GOALS — couple-level commitments
+// ============================
+export const SHARED_GOALS = [
+  {
+    id: 'sg_1',
+    pairingId: 'cp_demo',
+    title: 'Improve communication',
+    description: 'Use soft start-ups before bringing up difficult topics.',
+    progress: 40,
+    createdAt: new Date(Date.now() - 86400000 * 30).toISOString(),
+    therapistReviewed: true,
+  },
+  {
+    id: 'sg_2',
+    pairingId: 'cp_demo',
+    title: 'Schedule weekly connection time',
+    description: 'A 30-minute device-free window every Sunday evening.',
+    progress: 70,
+    createdAt: new Date(Date.now() - 86400000 * 20).toISOString(),
+    therapistReviewed: false,
+  },
+];
+
+// ============================
+// WORKSHEET RESPONSE VISIBILITY — privacy choice per completed worksheet
+// Stored alongside the completed worksheet record.
+// Values: 'private' | 'partner' | 'therapist_only' | 'pending'
+// ============================
+export const VISIBILITY_OPTIONS = [
+  {
+    id: 'private',
+    label: 'Private',
+    description: 'Only you can see this',
+  },
+  {
+    id: 'partner',
+    label: 'Share with Partner',
+    description: 'Your partner can view this',
+  },
+  {
+    id: 'therapist_only',
+    label: 'Therapist Only',
+    description: 'Useful for sensitive content',
+  },
+  {
+    id: 'pending',
+    label: 'Decide Later',
+    description: 'Save now, choose later',
+  },
+];

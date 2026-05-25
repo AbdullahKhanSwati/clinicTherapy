@@ -18,33 +18,21 @@ import dataStore from '../../../utils/dataStore';
 import { useAuth } from '../../../../App';
 
 const INK = '#1A2332';
-const ACCENT = COLORS.primary;
-const SUCCESS = '#15803D';
+const SAGE = '#15803D';
 
 const PRIMARY_NAV = [
-  { id: 'overview', label: 'Overview', icon: 'grid', tab: 'Overview' },
-  { id: 'clients', label: 'Clients', icon: 'users', tab: 'Clients' },
-  { id: 'worksheets', label: 'Content', icon: 'layers', tab: 'Worksheets' },
-  { id: 'insights', label: 'Analytics', icon: 'bar-chart-2', tab: 'Insights' },
+  { id: 'home', label: 'Home', icon: 'home', tab: 'Home' },
+  { id: 'children', label: 'My Children', icon: 'users', tab: 'Children' },
+  { id: 'insights', label: 'Family Insights', icon: 'bar-chart-2', tab: 'Insights' },
   { id: 'profile', label: 'Profile', icon: 'user', tab: 'Profile' },
 ];
 
-const MODULE_LINKS = [
-  { id: 'mod_children', label: 'Children Module', icon: 'smile', moduleId: 'children' },
-  { id: 'mod_teens', label: 'Teens Module', icon: 'user', moduleId: 'teens' },
-  { id: 'mod_couples', label: 'Couples Module', icon: 'heart', moduleId: 'couples' },
-  { id: 'mod_family', label: 'Family Module', icon: 'users', moduleId: 'family' },
-  { id: 'mod_general', label: 'General Library', icon: 'layers', moduleId: 'general' },
-];
-
 const QUICK_LINKS = [
-  { id: 'assign', label: 'Assign Worksheet', icon: 'send', screen: 'AssignWorksheet' },
-  { id: 'couples', label: 'Couple Management', icon: 'link', screen: 'CoupleManagement' },
-  { id: 'pair_couple', label: 'Pair a Couple', icon: 'user-plus', screen: 'AdminPairCouple' },
-  { id: 'new_worksheet', label: 'Create Worksheet', icon: 'file-plus', screen: 'CreateWorksheet' },
-  { id: 'new_affirmation', label: 'Create Affirmation', icon: 'message-circle', screen: 'CreateAffirmation' },
-  { id: 'new_coping', label: 'Create Coping Tool', icon: 'shield', screen: 'CreateCopingTool' },
-  { id: 'new_resource', label: 'Create Resource', icon: 'book-open', screen: 'CreateResource' },
+  { id: 'progress', label: 'Progress', icon: 'trending-up', screen: 'Progress' },
+  { id: 'journal', label: 'Family Journal', icon: 'book', screen: 'Journal' },
+  { id: 'resources', label: 'Resources', icon: 'book-open', screen: 'Resources' },
+  { id: 'toolbox', label: 'Coping Toolbox', icon: 'shield', screen: 'CopingToolbox' },
+  { id: 'affirmations', label: 'Affirmations', icon: 'message-circle', screen: 'Affirmations' },
 ];
 
 const SETTINGS_LINKS = [
@@ -52,18 +40,20 @@ const SETTINGS_LINKS = [
   { id: 'settings', label: 'Settings', icon: 'settings', screen: 'Settings' },
 ];
 
-export default function TherapistDrawerContent({ navigation }) {
+export default function ParentDrawerContent({ navigation }) {
   const { signOut } = useAuth();
-  const [therapist, setTherapist] = useState(null);
+  const [user, setUser] = useState(null);
+  const [childCount, setChildCount] = useState(0);
 
   useEffect(() => {
     (async () => {
       try {
         await dataStore.initialize();
         const u = await dataStore.getCurrentUser();
-        setTherapist(u);
+        setUser(u);
+        setChildCount((u?.children || []).length);
       } catch (e) {
-        console.log('[Therapist DrawerContent] load error', e);
+        console.log('[Parent DrawerContent] load error', e);
       }
     })();
   }, []);
@@ -74,38 +64,33 @@ export default function TherapistDrawerContent({ navigation }) {
   };
 
   const goToScreen = (screenName) => {
-    if (screenName === 'AssignWorksheet') {
-      navigation.navigate('AssignWorksheet', { worksheetId: null });
-    } else {
-      navigation.navigate(screenName);
-    }
-    navigation.closeDrawer?.();
-  };
-
-  const goToModule = (moduleId) => {
-    navigation.navigate('ModuleHub', { moduleId });
+    navigation.navigate(screenName);
     navigation.closeDrawer?.();
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Profile header */}
+        {/* Profile block */}
         <View style={styles.profileBlock}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {(therapist?.name || 'D').charAt(0).toUpperCase()}
-            </Text>
+          <View
+            style={[
+              styles.avatar,
+              { backgroundColor: user?.profileColor || SAGE },
+            ]}
+          >
+            <Text style={styles.avatarEmoji}>{user?.avatar || '👤'}</Text>
           </View>
-          <Text style={styles.name}>{therapist?.name || 'Doctor'}</Text>
-          <Text style={styles.email}>{therapist?.email || ''}</Text>
-          <View style={styles.verifiedBadge}>
-            <View style={styles.verifiedDot} />
-            <Text style={styles.verifiedText}>Clinician</Text>
+          <Text style={styles.name}>{user?.name || 'Parent'}</Text>
+          <Text style={styles.email}>{user?.email || ''}</Text>
+          <View style={styles.roleBadge}>
+            <View style={styles.roleDot} />
+            <Text style={styles.roleText}>
+              Parent · {childCount} {childCount === 1 ? 'child' : 'children'}
+            </Text>
           </View>
         </View>
 
-        {/* Primary nav */}
         <View style={styles.section}>
           {PRIMARY_NAV.map((it, i) => (
             <TouchableOpacity
@@ -126,28 +111,7 @@ export default function TherapistDrawerContent({ navigation }) {
           ))}
         </View>
 
-        <Text style={styles.sectionLabel}>MODULES</Text>
-        <View style={styles.section}>
-          {MODULE_LINKS.map((it, i) => (
-            <TouchableOpacity
-              key={it.id}
-              style={[
-                styles.navItem,
-                i < MODULE_LINKS.length - 1 && styles.navItemBorder,
-              ]}
-              onPress={() => goToModule(it.moduleId)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.navIconBox}>
-                <Feather name={it.icon} size={16} color={INK} />
-              </View>
-              <Text style={styles.navLabel}>{it.label}</Text>
-              <Feather name="chevron-right" size={18} color={COLORS.gray400} />
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Text style={styles.sectionLabel}>QUICK ACTIONS</Text>
+        <Text style={styles.sectionLabel}>QUICK ACCESS</Text>
         <View style={styles.section}>
           {QUICK_LINKS.map((it, i) => (
             <TouchableOpacity
@@ -210,25 +174,19 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.gray100,
   },
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: INK,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: SPACING.md,
   },
-  avatarText: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: COLORS.white,
-    letterSpacing: -0.5,
-  },
+  avatarEmoji: { fontSize: 32 },
   name: {
     fontSize: TYPOGRAPHY.lg,
     fontWeight: '800',
     color: INK,
-    letterSpacing: -0.4,
+    letterSpacing: -0.3,
   },
   email: {
     fontSize: 11,
@@ -236,26 +194,26 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: SPACING.sm,
   },
-  verifiedBadge: {
+  roleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: SUCCESS + '15',
+    backgroundColor: SAGE + '15',
     paddingHorizontal: SPACING.sm,
     paddingVertical: 4,
     borderRadius: BORDER_RADIUS.full,
   },
-  verifiedDot: {
+  roleDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: SUCCESS,
+    backgroundColor: SAGE,
     marginRight: 6,
   },
-  verifiedText: {
-    fontSize: 10,
+  roleText: {
+    fontSize: 11,
     fontWeight: '700',
-    color: SUCCESS,
-    letterSpacing: 0.6,
+    color: SAGE,
+    letterSpacing: 0.3,
   },
 
   sectionLabel: {

@@ -326,9 +326,7 @@ export default function TherapistInsightsTab() {
                     i < topEngaged.length - 1 && styles.distRowBorder,
                   ]}
                   onPress={() =>
-                    navigation
-                      .getParent?.()
-                      ?.navigate('ClientDetails', { clientId: c.id })
+                    navigation.navigate('ClientDetails', { clientId: c.id })
                   }
                   activeOpacity={0.7}
                 >
@@ -375,9 +373,7 @@ export default function TherapistInsightsTab() {
                     i < atRisk.length - 1 && styles.distRowBorder,
                   ]}
                   onPress={() =>
-                    navigation
-                      .getParent?.()
-                      ?.navigate('ClientDetails', { clientId: c.id })
+                    navigation.navigate('ClientDetails', { clientId: c.id })
                   }
                   activeOpacity={0.7}
                 >

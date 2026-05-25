@@ -16,6 +16,12 @@ import {
   CLIENT_RESOURCES,
   DATE_IDEAS,
   CUSTOM_WORKSHEETS,
+  COUPLE_PAIRINGS,
+  PARTNER_CHECKINS,
+  REPAIR_REQUESTS,
+  APPRECIATIONS,
+  CONFLICT_PAUSES,
+  SHARED_GOALS,
 } from '../data/mockData';
 
 const STORE_KEYS = {
@@ -36,11 +42,19 @@ const STORE_KEYS = {
   DATE_IDEAS: 'app_date_ideas',
   CUSTOM_WORKSHEETS: 'app_custom_worksheets',
   ADMIN_CONTENT_SEED_VERSION: 'app_admin_content_seed_version',
+  COUPLE_PAIRINGS: 'app_couple_pairings',
+  PARTNER_CHECKINS: 'app_partner_checkins',
+  REPAIR_REQUESTS: 'app_repair_requests',
+  APPRECIATIONS: 'app_appreciations',
+  CONFLICT_PAUSES: 'app_conflict_pauses',
+  SHARED_GOALS: 'app_shared_goals',
+  COUPLES_SYNC_SEED_VERSION: 'app_couples_sync_seed_version',
 };
 
 const ASSIGNMENTS_SEED_VERSION = 'v3-couples';
 const CONTENT_SEED_VERSION = 'v1-couples';
 const ADMIN_CONTENT_SEED_VERSION = 'v1-admin';
+const COUPLES_SYNC_SEED_VERSION = 'v1-sync';
 
 class DataStore {
   constructor() {
@@ -69,6 +83,12 @@ class DataStore {
         await this.setClientResources(CLIENT_RESOURCES);
         await this.setDateIdeas(DATE_IDEAS);
         await this.setCustomWorksheets(CUSTOM_WORKSHEETS);
+        await this.setCouplePairings(COUPLE_PAIRINGS);
+        await this.setPartnerCheckins(PARTNER_CHECKINS);
+        await this.setRepairRequests(REPAIR_REQUESTS);
+        await this.setAppreciations(APPRECIATIONS);
+        await this.setConflictPauses(CONFLICT_PAUSES);
+        await this.setSharedGoals(SHARED_GOALS);
         await AsyncStorage.setItem(
           STORE_KEYS.ASSIGNMENTS_SEED_VERSION,
           ASSIGNMENTS_SEED_VERSION
@@ -76,6 +96,10 @@ class DataStore {
         await AsyncStorage.setItem(
           STORE_KEYS.ADMIN_CONTENT_SEED_VERSION,
           ADMIN_CONTENT_SEED_VERSION
+        );
+        await AsyncStorage.setItem(
+          STORE_KEYS.COUPLES_SYNC_SEED_VERSION,
+          COUPLES_SYNC_SEED_VERSION
         );
       } else {
         const seedVersion = await AsyncStorage.getItem(
@@ -186,6 +210,68 @@ class DataStore {
           await AsyncStorage.setItem(
             STORE_KEYS.ADMIN_CONTENT_SEED_VERSION,
             ADMIN_CONTENT_SEED_VERSION
+          );
+        }
+
+        // Couples-sync collections (pairings, check-ins, etc.)
+        const syncVersion = await AsyncStorage.getItem(
+          STORE_KEYS.COUPLES_SYNC_SEED_VERSION
+        );
+        if (syncVersion !== COUPLES_SYNC_SEED_VERSION) {
+          console.log('[DataStore] Seeding couples sync collections');
+
+          const seedById = async (storeKey, seedData, getter, setter) => {
+            try {
+              const existingItems = await getter();
+              if (!existingItems || existingItems.length === 0) {
+                await setter(seedData);
+              } else {
+                const ids = new Set(existingItems.map((x) => x.id));
+                const merged = [
+                  ...existingItems,
+                  ...seedData.filter((x) => !ids.has(x.id)),
+                ];
+                await setter(merged);
+              }
+            } catch (e) {
+              console.log('[DataStore] sync seed', storeKey, 'error', e);
+            }
+          };
+
+          await seedById(
+            STORE_KEYS.COUPLE_PAIRINGS,
+            COUPLE_PAIRINGS,
+            () => this.getCouplePairings(),
+            (v) => this.setCouplePairings(v)
+          );
+          await seedById(
+            STORE_KEYS.PARTNER_CHECKINS,
+            PARTNER_CHECKINS,
+            () => this.getPartnerCheckins(),
+            (v) => this.setPartnerCheckins(v)
+          );
+          await seedById(
+            STORE_KEYS.REPAIR_REQUESTS,
+            REPAIR_REQUESTS,
+            () => this.getRepairRequests(),
+            (v) => this.setRepairRequests(v)
+          );
+          await seedById(
+            STORE_KEYS.APPRECIATIONS,
+            APPRECIATIONS,
+            () => this.getAppreciations(),
+            (v) => this.setAppreciations(v)
+          );
+          await seedById(
+            STORE_KEYS.SHARED_GOALS,
+            SHARED_GOALS,
+            () => this.getSharedGoals(),
+            (v) => this.setSharedGoals(v)
+          );
+
+          await AsyncStorage.setItem(
+            STORE_KEYS.COUPLES_SYNC_SEED_VERSION,
+            COUPLES_SYNC_SEED_VERSION
           );
         }
       }
@@ -777,6 +863,238 @@ class DataStore {
       STORE_KEYS.CUSTOM_WORKSHEETS,
       'customWorksheets',
       id
+    );
+  }
+
+  // ============================
+  // COUPLES SYNC — pairings, check-ins, repair requests, appreciations,
+  // conflict pauses, shared goals
+  // ============================
+
+  // ===== COUPLE PAIRINGS =====
+  async getCouplePairings() {
+    return this._getCollection(STORE_KEYS.COUPLE_PAIRINGS, 'couplePairings', []);
+  }
+  async setCouplePairings(items) {
+    return this._setCollection(STORE_KEYS.COUPLE_PAIRINGS, 'couplePairings', items);
+  }
+  async getActivePairingForUser(userId) {
+    const all = await this.getCouplePairings();
+    return all.find(
+      (p) =>
+        p.status === 'active' &&
+        (p.partnerAId === userId || p.partnerBId === userId)
+    );
+  }
+  async getPartnerIdForUser(userId) {
+    const p = await this.getActivePairingForUser(userId);
+    if (!p) return null;
+    return p.partnerAId === userId ? p.partnerBId : p.partnerAId;
+  }
+  async createPairingInvite(userId) {
+    const code =
+      'COUP-' +
+      Math.random().toString(36).slice(2, 7).toUpperCase() +
+      '-' +
+      Math.random().toString(36).slice(2, 7).toUpperCase();
+    return this._addToCollection(
+      STORE_KEYS.COUPLE_PAIRINGS,
+      'couplePairings',
+      {
+        partnerAId: userId,
+        partnerBId: null,
+        inviteCode: code,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        pairedAt: null,
+      },
+      'cp'
+    );
+  }
+  async acceptPairingInvite(code, userId) {
+    const all = await this.getCouplePairings();
+    const pairing = all.find(
+      (p) =>
+        p.inviteCode === code &&
+        p.status === 'pending' &&
+        p.partnerAId !== userId
+    );
+    if (!pairing) {
+      throw new Error('Invite code not found or already used.');
+    }
+    return this._updateInCollection(
+      STORE_KEYS.COUPLE_PAIRINGS,
+      'couplePairings',
+      pairing.id,
+      {
+        partnerBId: userId,
+        status: 'active',
+        pairedAt: new Date().toISOString(),
+      }
+    );
+  }
+  async disconnectPairing(pairingId) {
+    return this._updateInCollection(
+      STORE_KEYS.COUPLE_PAIRINGS,
+      'couplePairings',
+      pairingId,
+      { status: 'disconnected', disconnectedAt: new Date().toISOString() }
+    );
+  }
+
+  // ===== PARTNER CHECK-INS =====
+  async getPartnerCheckins() {
+    return this._getCollection(STORE_KEYS.PARTNER_CHECKINS, 'partnerCheckins', []);
+  }
+  async setPartnerCheckins(items) {
+    return this._setCollection(STORE_KEYS.PARTNER_CHECKINS, 'partnerCheckins', items);
+  }
+  async getCheckinsByUser(userId) {
+    const all = await this.getPartnerCheckins();
+    return all
+      .filter((c) => c.userId === userId)
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+  }
+  async getLatestCheckinForUser(userId) {
+    const list = await this.getCheckinsByUser(userId);
+    return list[0] || null;
+  }
+  async addPartnerCheckin(data) {
+    return this._addToCollection(
+      STORE_KEYS.PARTNER_CHECKINS,
+      'partnerCheckins',
+      { ...data, date: data.date || new Date().toISOString() },
+      'pci'
+    );
+  }
+
+  // ===== REPAIR REQUESTS =====
+  async getRepairRequests() {
+    return this._getCollection(STORE_KEYS.REPAIR_REQUESTS, 'repairRequests', []);
+  }
+  async setRepairRequests(items) {
+    return this._setCollection(STORE_KEYS.REPAIR_REQUESTS, 'repairRequests', items);
+  }
+  async getRepairRequestsForUser(userId) {
+    const all = await this.getRepairRequests();
+    return all
+      .filter((r) => r.fromUserId === userId || r.toUserId === userId)
+      .sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt));
+  }
+  async sendRepairRequest(fromUserId, toUserId, message) {
+    return this._addToCollection(
+      STORE_KEYS.REPAIR_REQUESTS,
+      'repairRequests',
+      {
+        fromUserId,
+        toUserId,
+        message,
+        sentAt: new Date().toISOString(),
+        status: 'sent',
+      },
+      'rr'
+    );
+  }
+  async respondToRepairRequest(id, response) {
+    return this._updateInCollection(
+      STORE_KEYS.REPAIR_REQUESTS,
+      'repairRequests',
+      id,
+      {
+        status: 'acknowledged',
+        response,
+        respondedAt: new Date().toISOString(),
+      }
+    );
+  }
+
+  // ===== APPRECIATIONS =====
+  async getAppreciations() {
+    return this._getCollection(STORE_KEYS.APPRECIATIONS, 'appreciations', []);
+  }
+  async setAppreciations(items) {
+    return this._setCollection(STORE_KEYS.APPRECIATIONS, 'appreciations', items);
+  }
+  async getAppreciationsForUser(userId) {
+    const all = await this.getAppreciations();
+    return all
+      .filter((a) => a.fromUserId === userId || a.toUserId === userId)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }
+  async sendAppreciation(fromUserId, toUserId, type, text) {
+    return this._addToCollection(
+      STORE_KEYS.APPRECIATIONS,
+      'appreciations',
+      { fromUserId, toUserId, type, text },
+      'ap'
+    );
+  }
+
+  // ===== CONFLICT PAUSES =====
+  async getConflictPauses() {
+    return this._getCollection(STORE_KEYS.CONFLICT_PAUSES, 'conflictPauses', []);
+  }
+  async setConflictPauses(items) {
+    return this._setCollection(STORE_KEYS.CONFLICT_PAUSES, 'conflictPauses', items);
+  }
+  async startConflictPause(initiatedByUserId, partnerId, durationMin = 20) {
+    return this._addToCollection(
+      STORE_KEYS.CONFLICT_PAUSES,
+      'conflictPauses',
+      {
+        initiatedByUserId,
+        partnerId,
+        durationMin,
+        startedAt: new Date().toISOString(),
+        status: 'active',
+      },
+      'cpz'
+    );
+  }
+  async completeConflictPause(id, returnNote = '') {
+    return this._updateInCollection(
+      STORE_KEYS.CONFLICT_PAUSES,
+      'conflictPauses',
+      id,
+      {
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+        returnNote,
+      }
+    );
+  }
+
+  // ===== SHARED GOALS =====
+  async getSharedGoals() {
+    return this._getCollection(STORE_KEYS.SHARED_GOALS, 'sharedGoals', []);
+  }
+  async setSharedGoals(items) {
+    return this._setCollection(STORE_KEYS.SHARED_GOALS, 'sharedGoals', items);
+  }
+  async getSharedGoalsForPairing(pairingId) {
+    const all = await this.getSharedGoals();
+    return all.filter((g) => g.pairingId === pairingId);
+  }
+  async addSharedGoal(pairingId, title, description) {
+    return this._addToCollection(
+      STORE_KEYS.SHARED_GOALS,
+      'sharedGoals',
+      {
+        pairingId,
+        title,
+        description: description || '',
+        progress: 0,
+        therapistReviewed: false,
+      },
+      'sg'
+    );
+  }
+  async updateSharedGoalProgress(id, progress) {
+    return this._updateInCollection(
+      STORE_KEYS.SHARED_GOALS,
+      'sharedGoals',
+      id,
+      { progress }
     );
   }
 
