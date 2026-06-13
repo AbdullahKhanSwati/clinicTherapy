@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   ScrollView,
@@ -10,8 +10,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
 import WorksheetRenderer from '../components/WorksheetRenderer';
-import { WORKSHEET_TEMPLATES } from '../data/worksheetTemplates';
-import dataStore from '../utils/dataStore';
+import {
+  getCurrentUserId,
+  getCurrentProfile,
+  getWorksheetById,
+  listAssignmentsFor,
+  saveWorksheetResponse,
+  getResponseForAssignment,
+} from '../services/api';
 
 export default function WorksheetScreen({ route, navigation }) {
   const { worksheetId, assignmentId } = route.params || {};
@@ -20,34 +26,39 @@ export default function WorksheetScreen({ route, navigation }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showIntro, setShowIntro] = useState(true);
+  // Existing draft loaded from DB. {} if none.
+  const [initialResponses, setInitialResponses] = useState({});
+  // We track the latest draft + step locally so that on unmount/blur we can
+  // flush a final save without waiting for the debounced auto-save.
+  const draftRef = useRef({ answers: {}, stepIndex: 0 });
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        await dataStore.initialize();
-
-        // Load worksheet — check built-in templates first, then custom (admin-created)
-        let ws = WORKSHEET_TEMPLATES[worksheetId];
-        if (!ws) {
-          const customList = await dataStore.getCustomWorksheets();
-          ws = (customList || []).find((w) => w.id === worksheetId);
-        }
+        const ws = await getWorksheetById(worksheetId);
         setWorksheet(ws);
 
-        // Load assignment if provided
-        if (assignmentId) {
-          const assignments = await dataStore.getWorksheetAssignments();
-          const assign = assignments.find(a => a.id === assignmentId);
-          setAssignment(assign);
-        }
-
-        // Load current user
-        const user = await dataStore.getCurrentUser();
+        const user = await getCurrentProfile();
         setCurrentUser(user);
+
+        if (assignmentId && user) {
+          const mine = await listAssignmentsFor(user.id);
+          setAssignment((mine || []).find((a) => a.id === assignmentId) || null);
+
+          // Pull any saved draft so the teen resumes from where they left off.
+          const existing = await getResponseForAssignment(assignmentId);
+          if (existing?.answers && Object.keys(existing.answers).length > 0) {
+            setInitialResponses(existing.answers);
+            draftRef.current.answers = existing.answers;
+            // If there's saved progress, skip the intro — drop the teen back
+            // into the worksheet at the next unanswered step.
+            if (!existing.completedAt) setShowIntro(false);
+          }
+        }
 
         setLoading(false);
       } catch (error) {
-        console.error('[v0] Error loading worksheet:', error);
+        console.error('[Worksheet] load error', error);
         setLoading(false);
       }
     };
@@ -59,27 +70,148 @@ export default function WorksheetScreen({ route, navigation }) {
     setShowIntro(false);
   };
 
-  const handleComplete = async (responses, skipped = false) => {
-    try {
-      if (!skipped && currentUser) {
-        // Save completed worksheet
-        const completion = await dataStore.saveCompletedWorksheet(
-          currentUser.id,
-          worksheetId,
-          assignmentId,
-          responses,
-        );
+  // Adapt the DB worksheet to the shape WorksheetRenderer expects.
+  // DB worksheets store everything in a JSONB `content` column with one of
+  // two legacy shapes:
+  //   { type: 'questionnaire', questions: ['Q1', 'Q2', ...] }
+  //   { type: 'builder', steps: [{ id, type, title, prompt, saveKey, ... }, ...] }
+  // The renderer wants a flat `steps` array on the worksheet object plus
+  // `completionMessage` / `therapistInsight` / `introduction`.
+  const renderableWorksheet = useMemo(() => {
+    if (!worksheet) return null;
+    const c = worksheet.content || {};
+    let steps = Array.isArray(c.steps) ? c.steps : [];
+    if (steps.length === 0 && Array.isArray(c.questions)) {
+      steps = c.questions.map((q, i) => ({
+        id: `step${i + 1}`,
+        type: 'text-area',
+        title: typeof q === 'string' ? q : q.title || `Question ${i + 1}`,
+        prompt: typeof q === 'object' ? q.prompt || '' : '',
+        required: false,
+        saveKey: `q${i + 1}`,
+      }));
+    }
+    return {
+      ...worksheet,
+      steps,
+      introduction: c.introduction || worksheet.description || '',
+      completionMessage:
+        c.completionMessage || 'Great work — your responses are saved.',
+      therapistInsight: c.therapistInsight,
+    };
+  }, [worksheet]);
 
-        if (completion) {
-          console.log('[v0] Worksheet saved successfully');
+  // Resume index: first step whose saveKey isn't in the existing answers.
+  const initialStepIndex = useMemo(() => {
+    const steps = renderableWorksheet?.steps || [];
+    if (!steps.length) return 0;
+    const answered = new Set(Object.keys(initialResponses || {}));
+    const idx = steps.findIndex(
+      (s) => s.saveKey && !answered.has(s.saveKey)
+    );
+    return idx === -1 ? steps.length - 1 : idx;
+  }, [renderableWorksheet, initialResponses]);
+
+  // Percentage answered = answeredCount / answerableStepsCount
+  const computeProgress = useCallback(
+    (answers) => {
+      const steps = renderableWorksheet?.steps || [];
+      const answerable = steps.filter((s) => s.saveKey).length;
+      if (!answerable) return 0;
+      const filled = steps.filter(
+        (s) => s.saveKey && answers && answers[s.saveKey] != null && answers[s.saveKey] !== ''
+      ).length;
+      return Math.round((filled / answerable) * 100);
+    },
+    [renderableWorksheet]
+  );
+
+  // Persist a draft (NOT marked completed). Called from the renderer's
+  // debounced auto-save and from the back/exit handler below.
+  const handleAutoSave = useCallback(
+    async (responses, stepIndex) => {
+      if (!assignmentId || !currentUser?.id) return;
+      draftRef.current = { answers: responses || {}, stepIndex: stepIndex ?? 0 };
+      try {
+        await saveWorksheetResponse({
+          assignmentId,
+          userId: currentUser.id,
+          answers: responses || {},
+          completed: false,
+          progress: computeProgress(responses),
+        });
+      } catch (e) {
+        console.log('[Worksheet] auto-save error', e?.message);
+      }
+    },
+    [assignmentId, currentUser, computeProgress]
+  );
+
+  // On unmount (back gesture / nav) flush any unsaved draft. Skips if the
+  // worksheet was completed (the answers are already persisted as completed).
+  useEffect(() => {
+    return () => {
+      const { answers, stepIndex } = draftRef.current;
+      if (
+        assignmentId &&
+        currentUser?.id &&
+        answers &&
+        Object.keys(answers).length > 0
+      ) {
+        // Fire-and-forget — RN unmount can't await.
+        saveWorksheetResponse({
+          assignmentId,
+          userId: currentUser.id,
+          answers,
+          completed: false,
+          progress: computeProgress(answers),
+        }).catch(() => {});
+        void stepIndex;
+      }
+    };
+    // We deliberately depend only on the ids so this runs at true unmount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignmentId, currentUser?.id]);
+
+  // Safely return — if there's no stack to pop (e.g. worksheet opened as
+  // initial route), fall back to navigating to the Home tab.
+  const safeGoBack = useCallback(() => {
+    if (navigation.canGoBack?.()) {
+      navigation.goBack();
+    } else {
+      // Best-effort fallback: jump to the user's role's home tab if it exists.
+      try {
+        navigation.navigate('Home');
+      } catch (_) {
+        /* nothing else we can do */
+      }
+    }
+  }, [navigation]);
+
+  const handleComplete = async (responses, skipped = false, stepIndex) => {
+    try {
+      if (assignmentId) {
+        const userId = currentUser?.id || (await getCurrentUserId());
+        if (userId) {
+          await saveWorksheetResponse({
+            assignmentId,
+            userId,
+            answers: responses || {},
+            // skipped = user tapped Exit without finishing → keep as draft so
+            // they can resume. Not skipped = user reached the end + tapped
+            // Finish → mark completed.
+            completed: !skipped,
+            progress: computeProgress(responses),
+          });
+          // Clear the unmount-flush draft so we don't double-write.
+          draftRef.current = { answers: {}, stepIndex: 0 };
+          void stepIndex;
         }
       }
-
-      // Show completion screen or navigate back
-      navigation.goBack();
+      safeGoBack();
     } catch (error) {
-      console.error('[v0] Error saving worksheet:', error);
-      navigation.goBack();
+      console.error('[Worksheet] save error', error);
+      safeGoBack();
     }
   };
 
@@ -101,7 +233,7 @@ export default function WorksheetScreen({ route, navigation }) {
           <Text style={styles.errorText}>Worksheet not found</Text>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => navigation.goBack()}
+            onPress={() => safeGoBack()}
           >
             <Text style={styles.buttonText}>Go Back</Text>
           </TouchableOpacity>
@@ -120,7 +252,7 @@ export default function WorksheetScreen({ route, navigation }) {
           <View style={styles.introHeader}>
             <TouchableOpacity
               style={styles.closeButton}
-              onPress={() => navigation.goBack()}
+              onPress={() => safeGoBack()}
             >
               <Text style={styles.closeButtonText}>✕</Text>
             </TouchableOpacity>
@@ -153,7 +285,8 @@ export default function WorksheetScreen({ route, navigation }) {
               <View style={styles.statBox}>
                 <Text style={styles.statLabel}>Difficulty</Text>
                 <Text style={styles.statValue}>
-                  {worksheet.difficulty.charAt(0).toUpperCase() + worksheet.difficulty.slice(1)}
+                  {(worksheet.difficulty || 'beginner').charAt(0).toUpperCase() +
+                    (worksheet.difficulty || 'beginner').slice(1)}
                 </Text>
               </View>
               <View style={styles.statBox}>
@@ -164,7 +297,9 @@ export default function WorksheetScreen({ route, navigation }) {
 
             <View style={styles.introText}>
               <Text style={styles.introTextTitle}>Why This Matters</Text>
-              <Text style={styles.introTextContent}>{worksheet.introduction}</Text>
+              <Text style={styles.introTextContent}>
+                {renderableWorksheet?.introduction || worksheet.description || ''}
+              </Text>
             </View>
 
             <TouchableOpacity
@@ -176,7 +311,7 @@ export default function WorksheetScreen({ route, navigation }) {
 
             <TouchableOpacity
               style={styles.cancelButton}
-              onPress={() => navigation.goBack()}
+              onPress={() => safeGoBack()}
             >
               <Text style={styles.cancelButtonText}>Not Now</Text>
             </TouchableOpacity>
@@ -186,11 +321,31 @@ export default function WorksheetScreen({ route, navigation }) {
     );
   }
 
-  // Render the worksheet using WorksheetRenderer
+  // Render the worksheet using WorksheetRenderer (with content shape adapted).
+  if (!renderableWorksheet || renderableWorksheet.steps.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centerContent}>
+          <Text style={styles.errorText}>
+            This worksheet has no questions yet.
+          </Text>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() => safeGoBack()}
+          >
+            <Text style={styles.buttonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
   return (
     <WorksheetRenderer
-      worksheet={worksheet}
+      worksheet={renderableWorksheet}
       onComplete={handleComplete}
+      initialResponses={initialResponses}
+      initialStepIndex={initialStepIndex}
+      onAutoSave={handleAutoSave}
     />
   );
 }

@@ -9,7 +9,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import {
   COLORS,
@@ -17,7 +17,11 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
+import {
+  getProfileById,
+  getCurrentUserId,
+  createNote,
+} from '../../services/api';
 
 const INK = '#1A2332';
 const ACCENT = COLORS.primary;
@@ -35,13 +39,13 @@ export default function AddNoteScreen({ route, navigation }) {
   const [category, setCategory] = useState('observation');
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     (async () => {
       try {
-        await dataStore.initialize();
         if (clientId) {
-          const c = await dataStore.getUserById(clientId);
+          const c = await getProfileById(clientId);
           setClient(c);
         }
       } catch (e) {
@@ -54,21 +58,27 @@ export default function AddNoteScreen({ route, navigation }) {
 
   const handleSave = async () => {
     if (!canSubmit) return;
+    if (!clientId) {
+      Alert.alert('Missing client', 'No client was selected for this note.');
+      return;
+    }
     try {
       setSubmitting(true);
-      const therapist = await dataStore.getCurrentUser();
-      await dataStore.addTherapistNote(
+      const therapistId = await getCurrentUserId();
+      if (!therapistId) throw new Error('Not signed in.');
+      await createNote({
+        therapistId,
         clientId,
-        therapist?.id || 'therapist1',
-        content.trim(),
-        category
-      );
+        body: content.trim(),
+        category,
+        isPrivate: true,    // matches the on-screen disclaimer
+      });
       Alert.alert('Note Saved', 'Your clinical note has been recorded.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
     } catch (e) {
       console.log('[AddNote] save error', e);
-      Alert.alert('Error', 'Failed to save note. Please try again.');
+      Alert.alert('Error', e?.message || 'Failed to save note. Please try again.');
       setSubmitting(false);
     }
   };
@@ -149,7 +159,7 @@ export default function AddNoteScreen({ route, navigation }) {
         <View style={{ height: SPACING.xl }} />
       </ScrollView>
 
-      <View style={styles.submitBar}>
+      <View style={[styles.submitBar, { paddingBottom: insets.bottom + SPACING.md }]}>
         <TouchableOpacity
           style={[styles.submitBtn, !canSubmit && styles.submitBtnDisabled]}
           onPress={handleSave}

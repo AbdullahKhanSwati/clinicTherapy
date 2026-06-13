@@ -34,7 +34,7 @@ export default function MultipleChoiceQuestion({ question, value, onChange, onNe
   return (
     <View style={styles.container}>
       <View style={styles.optionsContainer}>
-        {question.options.map((option, index) => (
+        {(question.options || []).map((option, index) => (
           <TouchableOpacity
             key={option.value}
             style={[

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   View,
   StyleSheet,
@@ -14,8 +14,19 @@ import {
   BORDER_RADIUS,
   SHADOWS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
-import { useAuth } from '../../../../App';
+import { useAuth } from '../../../contexts/AuthContext';
+import Avatar from '../../../components/Avatar';
+
+const ACCESSORY_EMOJI = {
+  none: '',
+  crown: '👑',
+  star: '⭐',
+  sparkles: '✨',
+  flower: '🌸',
+  heart: '💖',
+  hat: '🎩',
+  rainbow: '🌈',
+};
 
 const PRIMARY_NAV = [
   { id: 'home', emoji: '🏠', label: 'Home', tab: 'Home' },
@@ -24,45 +35,43 @@ const PRIMARY_NAV = [
   { id: 'profile', emoji: '👤', label: 'Profile', tab: 'Profile' },
 ];
 
+// `tab` = the bottom-tab the screen lives under; `screen` = the inner stack
+// screen name. The drawer pushes onto the tab's stack via nested navigation.
 const QUICK_LINKS = [
-  { id: 'mood', emoji: '🫧', label: 'Mood Check-In', screen: 'MoodCheckIn' },
-  { id: 'journal', emoji: '📔', label: 'New Journal Entry', screen: 'Journal' },
-  { id: 'breath', emoji: '🌬️', label: 'Quick Breath', screen: 'BreathingExercise' },
-  { id: 'toolbox', emoji: '🧰', label: 'Coping Toolbox', screen: 'CopingToolbox' },
+  { id: 'mood',    emoji: '🫧', label: 'Mood Check-In',     tab: 'Home',     screen: 'MoodCheckIn' },
+  { id: 'journal', emoji: '📔', label: 'New Journal Entry', tab: 'Home',     screen: 'Journal' },
+  { id: 'breath',  emoji: '🌬️', label: 'Quick Breath',      tab: 'Tools',    screen: 'BreathingExercise' },
+  { id: 'toolbox', emoji: '🧰', label: 'Coping Toolbox',    tab: 'Tools',    screen: 'CopingToolbox' },
 ];
 
 const MORE_LINKS = [
-  { id: 'progress', emoji: '📈', label: 'Progress', screen: 'Progress' },
-  { id: 'programs', emoji: '🎯', label: 'Therapy Programs', screen: 'TherapyPrograms' },
-  { id: 'resources', emoji: '📚', label: 'Resources', screen: 'Resources' },
-  { id: 'notifications', emoji: '🔔', label: 'Notifications', screen: 'Notifications' },
-  { id: 'settings', emoji: '⚙️', label: 'Settings', screen: 'Settings' },
+  { id: 'progress',      emoji: '📈', label: 'Progress',          tab: 'Insights', screen: 'Progress' },
+  { id: 'programs',      emoji: '🎯', label: 'Therapy Programs',  tab: 'Tools',    screen: 'TherapyPrograms' },
+  { id: 'resources',     emoji: '📚', label: 'Resources',         tab: 'Profile',  screen: 'Resources' },
+  { id: 'notifications', emoji: '🔔', label: 'Notifications',     tab: 'Home',     screen: 'Notifications' },
+  { id: 'settings',      emoji: '⚙️', label: 'Settings',          tab: 'Profile',  screen: 'Settings' },
 ];
 
 export default function TeenDrawerContent({ navigation }) {
-  const { signOut } = useAuth();
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        await dataStore.initialize();
-        const u = await dataStore.getCurrentUser();
-        setUser(u);
-      } catch (e) {
-        console.log('[Teen DrawerContent] load error', e);
-      }
-    })();
-  }, []);
+  // Read the live profile straight from AuthContext. The moment the avatar
+  // is updated anywhere (e.g. AvatarCustomizer calls refreshProfile()) this
+  // component re-renders with the new value — no local fetch needed.
+  const { signOut, profile: user } = useAuth();
 
   const goToTab = (tabName) => {
     navigation.navigate('DashboardTabs', { screen: tabName });
     navigation.closeDrawer?.();
   };
 
-  const goToScreen = (screenName) => {
-    const parent = navigation.getParent?.();
-    (parent || navigation).navigate(screenName);
+  // Drawer items now route via the tab navigator: drawer → DashboardTabs →
+  // <tab> → <inner stack screen>. That way the screens registered inside
+  // HomeStack / ToolsStack / InsightsStack / ProfileStack are actually
+  // reachable from the drawer.
+  const goToTabbedScreen = (tabName, screenName) => {
+    navigation.navigate('DashboardTabs', {
+      screen: tabName,
+      params: { screen: screenName },
+    });
     navigation.closeDrawer?.();
   };
 
@@ -71,19 +80,19 @@ export default function TeenDrawerContent({ navigation }) {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Profile block */}
         <View style={styles.profileBlock}>
-          <View
-            style={[
-              styles.avatar,
-              { backgroundColor: user?.profileColor || COLORS.primary },
-            ]}
-          >
-            {user?.avatar ? (
-              <Text style={styles.avatarChar}>{user.avatar}</Text>
-            ) : (
-              <Text style={styles.avatarText}>
-                {(user?.name || 'U').charAt(0).toUpperCase()}
+          <View style={styles.avatarWrap}>
+            <Avatar
+              value={user?.avatar}
+              name={user?.name}
+              size={72}
+              backgroundColor={user?.profileColor || COLORS.primary}
+              style={SHADOWS.md}
+            />
+            {user?.accessory && ACCESSORY_EMOJI[user.accessory] ? (
+              <Text style={styles.accessoryBadge}>
+                {ACCESSORY_EMOJI[user.accessory]}
               </Text>
-            )}
+            ) : null}
           </View>
           <Text style={styles.name}>{user?.name || 'Guest'}</Text>
           <Text style={styles.email}>{user?.email || ''}</Text>
@@ -116,7 +125,7 @@ export default function TeenDrawerContent({ navigation }) {
             <TouchableOpacity
               key={it.id}
               style={styles.quickTile}
-              onPress={() => goToScreen(it.screen)}
+              onPress={() => goToTabbedScreen(it.tab, it.screen)}
               activeOpacity={0.85}
             >
               <Text style={styles.quickEmoji}>{it.emoji}</Text>
@@ -137,7 +146,7 @@ export default function TeenDrawerContent({ navigation }) {
                 styles.linkItem,
                 i < MORE_LINKS.length - 1 && styles.linkItemBorder,
               ]}
-              onPress={() => goToScreen(it.screen)}
+              onPress={() => goToTabbedScreen(it.tab, it.screen)}
               activeOpacity={0.7}
             >
               <Text style={styles.linkEmoji}>{it.emoji}</Text>
@@ -163,6 +172,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.lg,
     marginBottom: SPACING.lg,
+  },
+  avatarWrap: {
+    position: 'relative',
+    marginBottom: SPACING.md,
+  },
+  accessoryBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -6,
+    fontSize: 24,
   },
   avatar: {
     width: 72,

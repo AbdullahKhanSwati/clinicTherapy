@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, SHADOWS } from '../../constants/colors';
 import dataStore from '../../utils/dataStore';
-import { useAuth } from '../../../App';
+import { useAuth } from '../../contexts/AuthContext';
 import { tryCatch } from '../../utils/safeOperations';
 
 export default function ProfileTab({ navigation }) {

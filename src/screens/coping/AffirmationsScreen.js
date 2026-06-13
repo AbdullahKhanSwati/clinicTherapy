@@ -1,15 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import useSafeGoBack from '../../hooks/useSafeGoBack';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
-
-const FALLBACK = [
-  { id: 'fb1', text: 'I am safe in this moment.', category: 'Anxiety' },
-  { id: 'fb2', text: 'Progress, not perfection.', category: 'Growth' },
-];
+import { getCurrentProfile, listAffirmations } from '../../services/api';
 
 export default function AffirmationsScreen({ navigation }) {
+  const goBack = useSafeGoBack();
   const [affirmations, setAffirmations] = useState([]);
   const [user, setUser] = useState(null);
   const [index, setIndex] = useState(0);
@@ -18,30 +15,29 @@ export default function AffirmationsScreen({ navigation }) {
   useEffect(() => {
     (async () => {
       try {
-        await dataStore.initialize();
         const [u, list] = await Promise.all([
-          dataStore.getCurrentUser(),
-          dataStore.getAffirmations(),
+          getCurrentProfile(),
+          listAffirmations(),
         ]);
         setUser(u);
-        // Filter by audience: show 'all' + their own role
+        // Filter by audience: show 'all' + this user's role
         const role = u?.role;
         const filtered = (list || []).filter(
           (a) => !a.audience || a.audience === 'all' || a.audience === role
         );
-        const final = filtered.length > 0 ? filtered : FALLBACK;
-        setAffirmations(final);
-        setIndex(Math.floor(Math.random() * final.length));
+        setAffirmations(filtered);
+        setIndex(
+          filtered.length > 0 ? Math.floor(Math.random() * filtered.length) : 0
+        );
       } catch (e) {
         console.log('[Affirmations] load error', e);
-        setAffirmations(FALLBACK);
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  const current = affirmations[index] || FALLBACK[0];
+  const current = affirmations[index] || null;
 
   const next = () => {
     if (affirmations.length <= 1) return;
@@ -55,7 +51,7 @@ export default function AffirmationsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={8}>
+        <TouchableOpacity onPress={() => goBack()} hitSlop={8}>
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Today's Affirmation</Text>
@@ -65,13 +61,20 @@ export default function AffirmationsScreen({ navigation }) {
       <View style={styles.body}>
         {loading ? (
           <ActivityIndicator color={COLORS.primary} />
+        ) : !current ? (
+          <>
+            <Text style={styles.heart}>💖</Text>
+            <Text style={styles.helper}>
+              No affirmations available yet. Check back soon.
+            </Text>
+          </>
         ) : (
           <>
             <Text style={styles.heart}>💖</Text>
             <View style={styles.card}>
               {current.category ? (
                 <Text style={styles.category}>
-                  {current.category.toUpperCase()}
+                  {String(current.category).toUpperCase()}
                 </Text>
               ) : null}
               <Text style={styles.quote}>“{current.text}”</Text>

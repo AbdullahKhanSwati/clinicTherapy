@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -14,11 +14,23 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
-import { useAuth } from '../../../../App';
+import { useAuth } from '../../../contexts/AuthContext';
+import Avatar from '../../../components/Avatar';
+import { listChildIdsForParent } from '../../../services/api';
 
 const INK = '#1A2332';
 const SAGE = '#15803D';
+
+const ACCESSORY_EMOJI = {
+  none: '',
+  crown: '👑',
+  star: '⭐',
+  sparkles: '✨',
+  flower: '🌸',
+  heart: '💖',
+  hat: '🎩',
+  rainbow: '🌈',
+};
 
 const PRIMARY_NAV = [
   { id: 'home', label: 'Home', icon: 'home', tab: 'Home' },
@@ -27,6 +39,8 @@ const PRIMARY_NAV = [
   { id: 'profile', label: 'Profile', icon: 'user', tab: 'Profile' },
 ];
 
+// FamilyDashboard registers these on the outer (Root) stack via `getParent`,
+// so we route them through the drawer's parent navigator.
 const QUICK_LINKS = [
   { id: 'progress', label: 'Progress', icon: 'trending-up', screen: 'Progress' },
   { id: 'journal', label: 'Family Journal', icon: 'book', screen: 'Journal' },
@@ -41,22 +55,24 @@ const SETTINGS_LINKS = [
 ];
 
 export default function ParentDrawerContent({ navigation }) {
-  const { signOut } = useAuth();
-  const [user, setUser] = useState(null);
+  const { signOut, profile: user } = useAuth();
   const [childCount, setChildCount] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      if (!user?.id) return;
       try {
-        await dataStore.initialize();
-        const u = await dataStore.getCurrentUser();
-        setUser(u);
-        setChildCount((u?.children || []).length);
+        const ids = await listChildIdsForParent(user.id);
+        if (!cancelled) setChildCount(ids.length);
       } catch (e) {
         console.log('[Parent DrawerContent] load error', e);
       }
     })();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   const goToTab = (tabName) => {
     navigation.navigate('DashboardTabs', { screen: tabName });
@@ -64,22 +80,32 @@ export default function ParentDrawerContent({ navigation }) {
   };
 
   const goToScreen = (screenName) => {
-    navigation.navigate(screenName);
+    // QUICK_LINKS / SETTINGS_LINKS live on the parent (ParentRoot) stack.
+    const parent = navigation.getParent?.();
+    (parent || navigation).navigate(screenName);
     navigation.closeDrawer?.();
   };
+
+  const profileColor = user?.profileColor || SAGE;
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Profile block */}
         <View style={styles.profileBlock}>
-          <View
-            style={[
-              styles.avatar,
-              { backgroundColor: user?.profileColor || SAGE },
-            ]}
-          >
-            <Text style={styles.avatarEmoji}>{user?.avatar || '👤'}</Text>
+          <View style={styles.avatarWrap}>
+            <Avatar
+              value={user?.avatar}
+              name={user?.name}
+              size={72}
+              backgroundColor={profileColor}
+              emojiSize={32}
+            />
+            {user?.accessory && ACCESSORY_EMOJI[user.accessory] ? (
+              <Text style={styles.accessoryBadge}>
+                {ACCESSORY_EMOJI[user.accessory]}
+              </Text>
+            ) : null}
           </View>
           <Text style={styles.name}>{user?.name || 'Parent'}</Text>
           <Text style={styles.email}>{user?.email || ''}</Text>
@@ -173,15 +199,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray100,
   },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
+  avatarWrap: {
+    position: 'relative',
     marginBottom: SPACING.md,
   },
-  avatarEmoji: { fontSize: 32 },
+  accessoryBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -4,
+    fontSize: 24,
+  },
   name: {
     fontSize: TYPOGRAPHY.lg,
     fontWeight: '800',

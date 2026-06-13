@@ -34,6 +34,7 @@ import AdminPairCoupleScreen from '../therapist/AdminPairCoupleScreen';
 import ManageUsersScreen from '../therapist/ManageUsersScreen';
 import AssignParentScreen from '../therapist/AssignParentScreen';
 import AssignChildScreen from '../therapist/AssignChildScreen';
+import WorksheetResponseScreen from '../therapist/WorksheetResponseScreen';
 import SettingsScreen from '../SettingsScreen';
 import NotificationCenterScreen from '../NotificationCenterScreen';
 
@@ -279,6 +280,10 @@ export default function TherapistDashboard() {
           name="AssignChild"
           component={AssignChildScreen}
           options={{ presentation: 'modal' }}
+        />
+        <TherapistRoot.Screen
+          name="WorksheetResponse"
+          component={WorksheetResponseScreen}
         />
       </TherapistRoot.Navigator>
     </ErrorBoundary>

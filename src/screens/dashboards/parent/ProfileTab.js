@@ -15,33 +15,37 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
-import { useAuth } from '../../../../App';
+import { useAuth } from '../../../contexts/AuthContext';
+import Avatar from '../../../components/Avatar';
+import { getChildrenForParent } from '../../../services/api';
 
 const INK = '#1A2332';
 const SAGE = '#15803D';
 
+const ACCESSORY_EMOJI = {
+  none: '',
+  crown: '👑',
+  star: '⭐',
+  sparkles: '✨',
+  flower: '🌸',
+  heart: '💖',
+  hat: '🎩',
+  rainbow: '🌈',
+};
+
 export default function ParentProfileTab() {
   const navigation = useNavigation();
-  const { signOut } = useAuth();
-  const [user, setUser] = useState(null);
+  const { signOut, profile: user } = useAuth();
   const [children, setChildren] = useState([]);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
+        if (!user?.id) return;
         try {
-          await dataStore.initialize();
-          const u = await dataStore.getCurrentUser();
-          if (cancelled) return;
-          setUser(u);
-          if (u?.children?.length) {
-            const list = await Promise.all(
-              u.children.map((id) => dataStore.getUserById(id))
-            );
-            if (!cancelled) setChildren(list.filter(Boolean));
-          }
+          const kids = await getChildrenForParent(user.id);
+          if (!cancelled) setChildren(kids || []);
         } catch (e) {
           console.log('[Parent ProfileTab] load error', e);
         }
@@ -49,35 +53,56 @@ export default function ParentProfileTab() {
       return () => {
         cancelled = true;
       };
-    }, [])
+    }, [user?.id])
   );
 
   const openDrawer = () => navigation.dispatch(DrawerActions.openDrawer());
+
+  // FamilyDashboard registers Resources/Progress/etc. on its outer parent
+  // (ParentRoot) stack, so we navigate through the parent navigator.
+  const goToParent = (screenName) => {
+    const parent = navigation.getParent?.() || navigation;
+    parent.navigate(screenName);
+  };
+
+  // Children is a sibling tab — bubble up to the tab navigator.
+  const goToTab = (tabName) => {
+    const parent = navigation.getParent?.() || navigation;
+    parent.navigate(tabName);
+  };
 
   const MENU_GROUPS = [
     {
       label: 'Family',
       items: [
-        { id: 'children', label: 'My Children', screen: 'Children' },
-        { id: 'avatar', label: 'Customize Avatar', screen: 'AvatarCustomizer' },
+        { id: 'children', label: 'My Children', _kind: 'tab', target: 'Children' },
+        { id: 'avatar', label: 'Customize Avatar', _kind: 'parent', target: 'AvatarCustomizer' },
       ],
     },
     {
       label: 'Wellness',
       items: [
-        { id: 'progress', label: 'Progress Report', screen: 'Progress' },
-        { id: 'resources', label: 'Resources', screen: 'Resources' },
-        { id: 'toolbox', label: 'Coping Toolbox', screen: 'CopingToolbox' },
+        { id: 'progress', label: 'Progress Report', _kind: 'parent', target: 'Progress' },
+        { id: 'resources', label: 'Resources', _kind: 'parent', target: 'Resources' },
+        { id: 'toolbox', label: 'Coping Toolbox', _kind: 'parent', target: 'CopingToolbox' },
+        { id: 'journal', label: 'Family Journal', _kind: 'parent', target: 'Journal' },
       ],
     },
     {
       label: 'Account',
       items: [
-        { id: 'notifications', label: 'Notifications', screen: 'Notifications' },
-        { id: 'settings', label: 'Settings', screen: 'Settings' },
+        { id: 'notifications', label: 'Notifications', _kind: 'parent', target: 'Notifications' },
+        { id: 'settings', label: 'Settings', _kind: 'parent', target: 'Settings' },
       ],
     },
   ];
+
+  const dispatchItem = (item) => {
+    if (item._kind === 'tab') goToTab(item.target);
+    else goToParent(item.target);
+  };
+
+  const profileColor = user?.profileColor || SAGE;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -93,28 +118,44 @@ export default function ParentProfileTab() {
             <Text style={styles.eyebrow}>ACCOUNT</Text>
             <Text style={styles.headerTitle}>Profile</Text>
           </View>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => goToParent('AvatarCustomizer')}
+          >
+            <Feather name="edit-2" size={18} color={INK} />
+          </TouchableOpacity>
         </View>
 
         {/* Profile hero */}
         <View style={styles.profileHero}>
-          <View
-            style={[
-              styles.avatar,
-              { backgroundColor: user?.profileColor || SAGE },
-            ]}
+          <TouchableOpacity
+            style={styles.avatarWrap}
+            onPress={() => goToParent('AvatarCustomizer')}
+            activeOpacity={0.85}
           >
-            <Text style={styles.avatarEmoji}>{user?.avatar || '👤'}</Text>
-          </View>
+            <Avatar
+              value={user?.avatar}
+              name={user?.name}
+              size={80}
+              backgroundColor={profileColor}
+              emojiSize={38}
+            />
+            {user?.accessory && ACCESSORY_EMOJI[user.accessory] ? (
+              <Text style={styles.accessoryBadge}>
+                {ACCESSORY_EMOJI[user.accessory]}
+              </Text>
+            ) : null}
+          </TouchableOpacity>
           <Text style={styles.profileName}>{user?.name || 'Parent'}</Text>
           <Text style={styles.profileEmail}>{user?.email || ''}</Text>
 
-          {user?.parentingRelationship && (
+          {user?.parentingRelationship ? (
             <View style={styles.relationshipBadge}>
               <Text style={styles.relationshipText}>
                 {user.parentingRelationship.toUpperCase()}
               </Text>
             </View>
-          )}
+          ) : null}
 
           {/* Children chips */}
           {children.length > 0 && (
@@ -122,18 +163,27 @@ export default function ParentProfileTab() {
               <Text style={styles.childrenLabel}>YOUR CHILDREN</Text>
               <View style={styles.chipsRow}>
                 {children.map((c) => (
-                  <View
+                  <TouchableOpacity
                     key={c.id}
                     style={[
                       styles.childChip,
                       { backgroundColor: (c.profileColor || SAGE) + '15' },
                     ]}
+                    onPress={() => {
+                      const parent = navigation.getParent?.() || navigation;
+                      parent.navigate('ChildDetail', { childId: c.id });
+                    }}
+                    activeOpacity={0.85}
                   >
-                    <Text style={styles.childChipEmoji}>{c.avatar || '👤'}</Text>
+                    <Text style={styles.childChipEmoji}>
+                      {c.avatar && !/^https?:\/\//i.test(c.avatar)
+                        ? c.avatar
+                        : '👤'}
+                    </Text>
                     <Text style={styles.childChipName}>
                       {c.name?.split(' ')[0]}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -154,7 +204,7 @@ export default function ParentProfileTab() {
                     styles.menuItem,
                     i < group.items.length - 1 && styles.menuItemBorder,
                   ]}
-                  onPress={() => navigation.navigate(item.screen)}
+                  onPress={() => dispatchItem(item)}
                   activeOpacity={0.7}
                 >
                   <Text style={styles.menuLabel}>{item.label}</Text>
@@ -227,15 +277,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.gray100,
   },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+  avatarWrap: {
+    position: 'relative',
     marginBottom: SPACING.md,
   },
-  avatarEmoji: { fontSize: 38 },
+  accessoryBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -4,
+    fontSize: 28,
+  },
   profileName: {
     fontSize: TYPOGRAPHY.xl,
     fontWeight: '800',

@@ -3,13 +3,12 @@ import {
   View,
   StyleSheet,
   Text,
-  TouchableOpacity,
   Platform,
 } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createDrawerNavigator } from '@react-navigation/drawer';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { COLORS, TYPOGRAPHY, SPACING, SHADOWS } from '../../constants/colors';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
@@ -20,7 +19,7 @@ import WorksheetsTab from './WorksheetsTab';
 import MoodRewardsTab from './MoodRewardsTab';
 import ProfileTab from './ProfileTab';
 
-// Detail screens
+// Detail screens reused from the app stack
 import WorksheetScreen from '../WorksheetScreen';
 import MoodCheckInScreen from '../MoodCheckInScreen';
 import ProgressScreen from '../ProgressScreen';
@@ -28,6 +27,13 @@ import JournalScreen from '../JournalScreen';
 import SettingsScreen from '../SettingsScreen';
 import ResourcesScreen from '../ResourcesScreen';
 import NotificationCenterScreen from '../NotificationCenterScreen';
+import CopingToolboxScreen from '../CopingToolboxScreen';
+import BreathingExerciseScreen from '../coping/BreathingExerciseScreen';
+import GroundingExerciseScreen from '../coping/GroundingExerciseScreen';
+import VisualizationScreen from '../coping/VisualizationScreen';
+import AffirmationsScreen from '../coping/AffirmationsScreen';
+import AvatarCustomizerScreen from '../AvatarCustomizerScreen';
+import BadgesScreen from '../BadgesScreen';
 
 // Drawer navigation
 import DrawerContent from './DrawerContent';
@@ -36,7 +42,6 @@ const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 const Drawer = createDrawerNavigator();
 
-// Tab bar icons component
 const TabBarIcon = ({ focused, icon, label }) => (
   <View style={styles.tabIconContainer}>
     <Text style={[
@@ -54,59 +59,53 @@ const TabBarIcon = ({ focused, icon, label }) => (
   </View>
 );
 
-// Stack navigators for each tab
+const screenOptions = {
+  headerShown: false,
+  contentStyle: { backgroundColor: COLORS.background },
+};
+
 const HomeStack = () => (
-  <Stack.Navigator
-    screenOptions={{
-      headerShown: false,
-      contentStyle: { backgroundColor: COLORS.background },
-    }}
-  >
+  <Stack.Navigator screenOptions={screenOptions}>
     <Stack.Screen name="HomeTabScreen" component={HomeTab} />
     <Stack.Screen name="MoodCheckIn" component={MoodCheckInScreen} />
     <Stack.Screen name="Progress" component={ProgressScreen} />
     <Stack.Screen name="Journal" component={JournalScreen} />
+    <Stack.Screen name="CopingToolbox" component={CopingToolboxScreen} />
+    <Stack.Screen name="BreathingExercise" component={BreathingExerciseScreen} />
+    <Stack.Screen name="GroundingExercise" component={GroundingExerciseScreen} />
+    <Stack.Screen name="Visualization" component={VisualizationScreen} />
+    <Stack.Screen name="Affirmations" component={AffirmationsScreen} />
+    <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
   </Stack.Navigator>
 );
 
 const WorksheetsStack = () => (
-  <Stack.Navigator
-    screenOptions={{
-      headerShown: false,
-      contentStyle: { backgroundColor: COLORS.background },
-    }}
-  >
+  <Stack.Navigator screenOptions={screenOptions}>
     <Stack.Screen name="WorksheetsTabScreen" component={WorksheetsTab} />
     <Stack.Screen name="Worksheet" component={WorksheetScreen} />
   </Stack.Navigator>
 );
 
 const MoodStack = () => (
-  <Stack.Navigator
-    screenOptions={{
-      headerShown: false,
-      contentStyle: { backgroundColor: COLORS.background },
-    }}
-  >
+  <Stack.Navigator screenOptions={screenOptions}>
     <Stack.Screen name="MoodRewardsTabScreen" component={MoodRewardsTab} />
     <Stack.Screen name="MoodCheckIn" component={MoodCheckInScreen} />
     <Stack.Screen name="Progress" component={ProgressScreen} />
+    <Stack.Screen name="Badges" component={BadgesScreen} />
   </Stack.Navigator>
 );
 
 const ProfileStack = () => (
-  <Stack.Navigator
-    screenOptions={{
-      headerShown: false,
-      contentStyle: { backgroundColor: COLORS.background },
-    }}
-  >
+  <Stack.Navigator screenOptions={screenOptions}>
     <Stack.Screen name="ProfileTabScreen" component={ProfileTab} />
+    <Stack.Screen name="AvatarCustomizer" component={AvatarCustomizerScreen} />
     <Stack.Screen name="Progress" component={ProgressScreen} />
     <Stack.Screen name="Journal" component={JournalScreen} />
     <Stack.Screen name="Resources" component={ResourcesScreen} />
+    <Stack.Screen name="CopingToolbox" component={CopingToolboxScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
     <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
+    <Stack.Screen name="Badges" component={BadgesScreen} />
   </Stack.Navigator>
 );
 

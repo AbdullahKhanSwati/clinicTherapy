@@ -31,6 +31,7 @@ import GroundingExerciseScreen from '../coping/GroundingExerciseScreen';
 import VisualizationScreen from '../coping/VisualizationScreen';
 import AffirmationsScreen from '../coping/AffirmationsScreen';
 import AvatarCustomizerScreen from '../AvatarCustomizerScreen';
+import BadgesScreen from '../BadgesScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -92,6 +93,7 @@ const ProfileStack = () => (
     <Stack.Screen name="CopingToolbox" component={CopingToolboxScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
     <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
+    <Stack.Screen name="Badges" component={BadgesScreen} />
   </Stack.Navigator>
 );
 

@@ -16,8 +16,13 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
-import { WORKSHEET_TEMPLATES } from '../../../data/worksheetTemplates';
+import {
+  getCurrentProfile,
+  listAllProfiles,
+  listAssignments,
+  listAllMoodEntries,
+  listWorksheets,
+} from '../../../services/api';
 
 const INK = '#1A2332';
 const ACCENT = COLORS.primary;
@@ -44,6 +49,7 @@ export default function TherapistOverviewTab() {
   const [assignments, setAssignments] = useState([]);
   const [completed, setCompleted] = useState([]);
   const [allMoods, setAllMoods] = useState([]);
+  const [worksheets, setWorksheets] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(
@@ -52,29 +58,42 @@ export default function TherapistOverviewTab() {
       (async () => {
         try {
           setLoading(true);
-          await dataStore.initialize();
-          const u = await dataStore.getCurrentUser();
+          const u = await getCurrentProfile();
           if (cancelled) return;
           setTherapist(u);
 
-          const allUsers = await dataStore.getUsers();
-          const clientList = Object.values(allUsers).filter(
-            (x) => x.role !== 'therapist'
+          const allProfiles = await listAllProfiles();
+          const clientList = (allProfiles || []).filter(
+            (x) => x.role !== 'therapist' && x.role !== 'admin'
           );
           if (cancelled) return;
           setClients(clientList);
 
-          const allAssignments = await dataStore.getWorksheetAssignments();
+          const allAssignments = await listAssignments();
           if (cancelled) return;
           setAssignments(allAssignments || []);
 
-          const allCompleted = await dataStore.getWorksheetsCompleted();
+          // "Completed" is derived from assignments whose status === 'completed'.
+          // Shape it like the legacy completion records so downstream UI works.
+          const completedFromAssignments = (allAssignments || [])
+            .filter((a) => a.status === 'completed')
+            .map((a) => ({
+              id: a.id,
+              userId: a.assigneeId,
+              worksheetId: a.worksheetId,
+              completedDate: a.updatedAt || a.createdAt,
+              reviewedByTherapist: false,
+            }));
           if (cancelled) return;
-          setCompleted(allCompleted || []);
+          setCompleted(completedFromAssignments);
 
-          const allMoodEntries = await dataStore.getMoodEntries();
+          const allMoodEntries = await listAllMoodEntries();
           if (cancelled) return;
           setAllMoods(allMoodEntries || []);
+
+          const allWS = await listWorksheets();
+          if (cancelled) return;
+          setWorksheets(allWS || []);
         } catch (e) {
           console.log('[Therapist OverviewTab] load error', e);
         } finally {
@@ -96,9 +115,6 @@ export default function TherapistOverviewTab() {
   // ===== Metrics =====
   const metrics = useMemo(() => {
     const activeClients = clients.length;
-    const pendingReview = completed.filter(
-      (c) => !c.reviewedByTherapist
-    ).length;
     const completionRate =
       assignments.length > 0
         ? Math.round(
@@ -118,26 +134,18 @@ export default function TherapistOverviewTab() {
           ) / 10
         : 0;
 
-    return { activeClients, pendingReview, completionRate, avgMood };
-  }, [clients, assignments, completed, allMoods]);
-
-  // ===== Today's Schedule (mocked: 2 upcoming sessions) =====
-  const schedule = useMemo(() => {
-    const today = clients.slice(0, 2).map((c, i) => ({
-      id: c.id,
-      client: c,
-      time: i === 0 ? '2:00 PM' : '4:00 PM',
-      type: c.role === 'couples' ? 'Couples Session' : 'Individual Session',
-    }));
-    return today;
-  }, [clients]);
+    return { activeClients, completionRate, avgMood };
+  }, [clients, assignments, allMoods]);
 
   // ===== At-risk / alerts =====
   const alerts = useMemo(() => {
     const list = [];
-    // Overdue assignments
+    // Overdue assignments (guarded against null dueDate)
     const overdue = assignments.filter(
-      (a) => a.status !== 'completed' && new Date(a.dueDate) < new Date()
+      (a) =>
+        a.status !== 'completed' &&
+        a.dueDate &&
+        new Date(a.dueDate) < new Date()
     );
     if (overdue.length > 0) {
       list.push({
@@ -150,20 +158,8 @@ export default function TherapistOverviewTab() {
         action: () => navigation.navigate('Worksheets'),
       });
     }
-    // Pending review
-    if (metrics.pendingReview > 0) {
-      list.push({
-        id: 'review',
-        severity: 'warning',
-        title: `${metrics.pendingReview} submission${
-          metrics.pendingReview === 1 ? '' : 's'
-        } pending review`,
-        sub: 'Provide feedback on completed worksheets',
-        action: () => navigation.navigate('Clients'),
-      });
-    }
     return list;
-  }, [assignments, metrics, navigation]);
+  }, [assignments, navigation]);
 
   // ===== Recent activity (completed worksheets, sorted by date) =====
   const recent = useMemo(() => {
@@ -172,10 +168,10 @@ export default function TherapistOverviewTab() {
       .slice(0, 5)
       .map((c) => {
         const client = clients.find((x) => x.id === c.userId);
-        const worksheet = WORKSHEET_TEMPLATES[c.worksheetId];
+        const worksheet = worksheets.find((w) => w.id === c.worksheetId);
         return { ...c, client, worksheet };
       });
-  }, [completed, clients]);
+  }, [completed, clients, worksheets]);
 
   const therapistName = therapist?.name || 'Doctor';
 
@@ -222,15 +218,15 @@ export default function TherapistOverviewTab() {
                 accent={SUCCESS}
               />
               <KpiTile
-                label="PENDING REVIEW"
-                value={metrics.pendingReview}
-                accent={WARNING}
-              />
-              <KpiTile
                 label="AVG MOOD"
                 value={metrics.avgMood || '—'}
                 accent={ACCENT}
                 suffix="/10"
+              />
+              <KpiTile
+                label="WORKSHEETS"
+                value={assignments.length}
+                accent={WARNING}
               />
             </View>
 
@@ -305,41 +301,6 @@ export default function TherapistOverviewTab() {
               </TouchableOpacity>
             </View>
 
-            {/* Today's schedule */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionLabel}>TODAY'S SCHEDULE</Text>
-              <Text style={styles.sectionMeta}>
-                {new Date().toLocaleDateString('en-US', {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                })}
-              </Text>
-            </View>
-
-            {schedule.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyText}>No sessions scheduled today</Text>
-              </View>
-            ) : (
-              schedule.map((s) => (
-                <TouchableOpacity
-                  key={s.id}
-                  style={styles.sessionCard}
-                  onPress={() => openClient(s.client)}
-                  activeOpacity={0.9}
-                >
-                  <View style={styles.sessionTime}>
-                    <Text style={styles.sessionTimeText}>{s.time}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.sessionClient}>{s.client.name}</Text>
-                    <Text style={styles.sessionType}>{s.type}</Text>
-                  </View>
-                  <Feather name="chevron-right" size={20} color={COLORS.gray400} />
-                </TouchableOpacity>
-              ))
-            )}
 
             {/* Recent activity */}
             <View style={styles.sectionHeader}>
@@ -356,12 +317,18 @@ export default function TherapistOverviewTab() {
             ) : (
               <View style={styles.activityCard}>
                 {recent.map((r, i) => (
-                  <View
+                  <TouchableOpacity
                     key={r.id}
                     style={[
                       styles.activityRow,
                       i < recent.length - 1 && styles.activityRowBorder,
                     ]}
+                    onPress={() =>
+                      navigation.navigate('WorksheetResponse', {
+                        assignmentId: r.id,
+                      })
+                    }
+                    activeOpacity={0.7}
                   >
                     <View style={styles.activityDot} />
                     <View style={{ flex: 1 }}>
@@ -381,7 +348,8 @@ export default function TherapistOverviewTab() {
                         })}
                       </Text>
                     </View>
-                  </View>
+                    <Feather name="chevron-right" size={16} color={COLORS.gray400} />
+                  </TouchableOpacity>
                 ))}
               </View>
             )}

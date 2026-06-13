@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import useSafeGoBack from '../../hooks/useSafeGoBack';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/colors';
 
 const PHASES = [
@@ -10,6 +11,7 @@ const PHASES = [
 ];
 
 export default function BreathingExerciseScreen({ navigation }) {
+  const goBack = useSafeGoBack();
   const [running, setRunning] = useState(false);
   const [phaseIndex, setPhaseIndex] = useState(0);
   const [cycleCount, setCycleCount] = useState(0);
@@ -57,7 +59,7 @@ export default function BreathingExerciseScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={8}>
+        <TouchableOpacity onPress={() => goBack()} hitSlop={8}>
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Breathing</Text>

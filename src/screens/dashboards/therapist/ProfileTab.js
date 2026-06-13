@@ -15,44 +15,55 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
-import { useAuth } from '../../../../App';
+import {
+  listAllProfiles,
+  listAssignments,
+  listAllNotes,
+} from '../../../services/api';
+import { useAuth } from '../../../contexts/AuthContext';
+import Avatar from '../../../components/Avatar';
 
 const INK = '#1A2332';
 const ACCENT = COLORS.primary;
+
+const ACCESSORY_EMOJI = {
+  none: '',
+  crown: '👑',
+  star: '⭐',
+  sparkles: '✨',
+  flower: '🌸',
+  heart: '💖',
+  hat: '🎩',
+  rainbow: '🌈',
+};
 const SUCCESS = '#15803D';
 
 export default function TherapistProfileTab() {
   const navigation = useNavigation();
-  const { signOut } = useAuth();
-  const [therapist, setTherapist] = useState(null);
+  // Profile from AuthContext — avatar updates propagate instantly.
+  // Stats are still fetched locally on focus.
+  const { signOut, profile: therapist } = useAuth();
   const [stats, setStats] = useState({ clients: 0, assignments: 0, notes: 0 });
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
+        if (!therapist?.id) return;
         try {
-          await dataStore.initialize();
-          const u = await dataStore.getCurrentUser();
+          const [profiles, a, notes] = await Promise.all([
+            listAllProfiles(),
+            listAssignments(),
+            listAllNotes(),
+          ]);
           if (cancelled) return;
-          setTherapist(u);
-
-          if (u) {
-            const [users, a, notes] = await Promise.all([
-              dataStore.getUsers(),
-              dataStore.getAssignmentsByTherapist(u.id),
-              dataStore.getTherapistNotes(),
-            ]);
-            if (cancelled) return;
-            setStats({
-              clients: Object.values(users || {}).filter(
-                (x) => x.role !== 'therapist'
-              ).length,
-              assignments: (a || []).length,
-              notes: (notes || []).filter((n) => n.therapistId === u.id).length,
-            });
-          }
+          setStats({
+            clients: (profiles || []).filter(
+              (x) => x.role !== 'therapist' && x.role !== 'admin'
+            ).length,
+            assignments: (a || []).filter((x) => x.assignedBy === therapist.id).length,
+            notes: (notes || []).filter((n) => n.therapistId === therapist.id).length,
+          });
         } catch (e) {
           console.log('[Therapist ProfileTab] load error', e);
         }
@@ -60,7 +71,7 @@ export default function TherapistProfileTab() {
       return () => {
         cancelled = true;
       };
-    }, [])
+    }, [therapist?.id])
   );
 
   const openDrawer = () => navigation.dispatch(DrawerActions.openDrawer());
@@ -113,10 +124,18 @@ export default function TherapistProfileTab() {
 
         {/* Profile hero */}
         <View style={styles.profileHero}>
-          <View style={styles.profileAvatar}>
-            <Text style={styles.profileAvatarText}>
-              {(therapist?.name || 'D').charAt(0).toUpperCase()}
-            </Text>
+          <View style={styles.avatarWrap}>
+            <Avatar
+              value={therapist?.avatar}
+              name={therapist?.name || 'D'}
+              size={80}
+              backgroundColor={therapist?.profileColor || INK}
+            />
+            {therapist?.accessory && ACCESSORY_EMOJI[therapist.accessory] ? (
+              <Text style={styles.accessoryBadge}>
+                {ACCESSORY_EMOJI[therapist.accessory]}
+              </Text>
+            ) : null}
           </View>
           <Text style={styles.profileName}>{therapist?.name || 'Doctor'}</Text>
           <Text style={styles.profileEmail}>{therapist?.email || ''}</Text>
@@ -126,9 +145,9 @@ export default function TherapistProfileTab() {
             <Text style={styles.verifiedText}>Verified Clinician</Text>
           </View>
 
-          {therapist?.specializations && therapist.specializations.length > 0 && (
+          {therapist?.emotionalFocus && therapist.emotionalFocus.length > 0 && (
             <View style={styles.specRow}>
-              {therapist.specializations.map((spec, i) => (
+              {therapist.emotionalFocus.map((spec, i) => (
                 <View key={i} style={styles.specTag}>
                   <Text style={styles.specTagText}>{spec}</Text>
                 </View>
@@ -242,6 +261,16 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xl,
     borderWidth: 1,
     borderColor: COLORS.gray100,
+  },
+  avatarWrap: {
+    position: 'relative',
+    marginBottom: SPACING.md,
+  },
+  accessoryBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -6,
+    fontSize: 26,
   },
   profileAvatar: {
     width: 80,

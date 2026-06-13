@@ -5,6 +5,7 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, DrawerActions } from '@react-navigation/native';
@@ -15,7 +16,13 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
+import { useAuth } from '../../../contexts/AuthContext';
+import Avatar from '../../../components/Avatar';
+import {
+  getChildrenForParent,
+  listMoodEntries,
+  listAssignmentsFor,
+} from '../../../services/api';
 
 const INK = '#1A2332';
 const SAGE = '#15803D';
@@ -27,86 +34,125 @@ const MOOD_SCORE = {
 
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
+// Map a JS Date to a Mon..Sun column index (0..6).
+const colOf = (d) => (d.getDay() + 6) % 7;
+const dayKeyOf = (d) =>
+  `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+
 export default function ParentInsightsTab() {
   const navigation = useNavigation();
-  const [user, setUser] = useState(null);
+  const { profile: user } = useAuth();
   const [children, setChildren] = useState([]);
   const [allMoods, setAllMoods] = useState([]);
-  const [allCompleted, setAllCompleted] = useState([]);
+  const [allAssignments, setAllAssignments] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
+        if (!user?.id) {
+          setLoading(false);
+          return;
+        }
         try {
-          await dataStore.initialize();
-          const u = await dataStore.getCurrentUser();
+          setLoading(true);
+          const kids = await getChildrenForParent(user.id);
           if (cancelled) return;
-          setUser(u);
+          setChildren(kids || []);
 
-          if (u && Array.isArray(u.children) && u.children.length > 0) {
-            const kids = (
-              await Promise.all(u.children.map((id) => dataStore.getUserById(id)))
-            ).filter(Boolean);
-            if (cancelled) return;
-            setChildren(kids);
+          if ((kids || []).length === 0) {
+            setAllMoods([]);
+            setAllAssignments([]);
+            return;
+          }
 
-            const moods = [];
-            const completed = [];
-            await Promise.all(
-              kids.map(async (k) => {
-                const [m, c] = await Promise.all([
-                  dataStore.getMoodEntriesByUser(k.id),
-                  dataStore.getCompletedWorksheetsByUser(k.id),
+          const moods = [];
+          const assignments = [];
+          await Promise.all(
+            kids.map(async (k) => {
+              try {
+                const [m, a] = await Promise.all([
+                  listMoodEntries(k.id),
+                  listAssignmentsFor(k.id),
                 ]);
                 (m || []).forEach((entry) =>
                   moods.push({ ...entry, child: k })
                 );
-                (c || []).forEach((entry) =>
-                  completed.push({ ...entry, child: k })
+                (a || []).forEach((entry) =>
+                  assignments.push({ ...entry, child: k })
                 );
-              })
-            );
-            if (cancelled) return;
-            setAllMoods(moods);
-            setAllCompleted(completed);
-          }
+              } catch (e) {
+                console.log('[Parent InsightsTab] per-child error', k?.id, e);
+              }
+            })
+          );
+          if (cancelled) return;
+          setAllMoods(moods);
+          setAllAssignments(assignments);
         } catch (e) {
           console.log('[Parent InsightsTab] load error', e);
+        } finally {
+          if (!cancelled) setLoading(false);
         }
       })();
       return () => {
         cancelled = true;
       };
-    }, [])
+    }, [user?.id])
   );
 
   const openDrawer = () => navigation.dispatch(DrawerActions.openDrawer());
 
-  // Family-wide weekly mood chart — avg across all children's last 7 entries
+  // Aggregate mood score per calendar day (last 7 days, Mon..Sun).
+  // Each cell is the average mood score for that day across all children.
   const weeklyChart = useMemo(() => {
-    if (allMoods.length === 0) {
-      return DAY_LABELS.map((d) => ({ day: d, value: 0 }));
+    const byDay = new Map();
+    (allMoods || []).forEach((m) => {
+      if (!m?.date) return;
+      const d = new Date(m.date);
+      const key = dayKeyOf(d);
+      const arr = byDay.get(key) || [];
+      arr.push(m);
+      byDay.set(key, arr);
+    });
+    const out = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = dayKeyOf(d);
+      const entries = byDay.get(key) || [];
+      const score =
+        entries.length === 0
+          ? 0
+          : entries.reduce((s, m) => s + (MOOD_SCORE[m.mood] ?? 5), 0) /
+            entries.length;
+      out.push({
+        day: DAY_LABELS[colOf(d)],
+        value: Math.round(score * 10) / 10,
+        count: entries.length,
+      });
     }
-    const recent = [...allMoods]
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 7)
-      .reverse();
-    return DAY_LABELS.map((d, i) => ({
-      day: d,
-      value: recent[i] ? MOOD_SCORE[recent[i].mood] || 5 : 0,
-    }));
+    return out;
   }, [allMoods]);
 
   const avgScore = useMemo(() => {
     const v = weeklyChart.filter((d) => d.value > 0);
     if (v.length === 0) return 0;
     return (
-      Math.round(
-        (v.reduce((s, d) => s + d.value, 0) / v.length) * 10
-      ) / 10
+      Math.round((v.reduce((s, d) => s + d.value, 0) / v.length) * 10) / 10
     );
   }, [weeklyChart]);
+
+  const completedCount = useMemo(
+    () => allAssignments.filter((a) => a.status === 'completed').length,
+    [allAssignments]
+  );
+
+  const openChild = (childId) => {
+    const parent = navigation.getParent?.() || navigation;
+    parent.navigate('ChildDetail', { childId });
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -123,6 +169,12 @@ export default function ParentInsightsTab() {
             <Text style={styles.headerTitle}>Insights</Text>
           </View>
         </View>
+
+        {loading && (
+          <View style={{ paddingVertical: SPACING.lg, alignItems: 'center' }}>
+            <ActivityIndicator color={INK} />
+          </View>
+        )}
 
         {/* Family score hero */}
         <View style={styles.scoreCard}>
@@ -154,7 +206,7 @@ export default function ParentInsightsTab() {
           />
           <StatCard
             label="WORKSHEETS"
-            value={allCompleted.length}
+            value={completedCount}
             color={INK}
             icon="check-circle"
           />
@@ -205,13 +257,13 @@ export default function ParentInsightsTab() {
           </View>
         ) : (
           children.map((k) => {
-            const childMoods = allMoods.filter((m) => m.child.id === k.id);
-            const childCompleted = allCompleted.filter(
-              (c) => c.child.id === k.id
+            const childMoods = allMoods.filter((m) => m.child?.id === k.id);
+            const childCompleted = allAssignments.filter(
+              (c) => c.child?.id === k.id && c.status === 'completed'
             );
             const childMoodScores = childMoods
               .map((m) => MOOD_SCORE[m.mood])
-              .filter(Boolean);
+              .filter((v) => typeof v === 'number');
             const childAvg =
               childMoodScores.length > 0
                 ? Math.round(
@@ -221,17 +273,20 @@ export default function ParentInsightsTab() {
                   ) / 10
                 : null;
             return (
-              <View key={k.id} style={styles.snapshotCard}>
-                <View
-                  style={[
-                    styles.snapshotAvatar,
-                    { backgroundColor: k.profileColor || SAGE },
-                  ]}
-                >
-                  <Text style={styles.snapshotAvatarText}>
-                    {k.avatar || '👤'}
-                  </Text>
-                </View>
+              <TouchableOpacity
+                key={k.id}
+                style={styles.snapshotCard}
+                onPress={() => openChild(k.id)}
+                activeOpacity={0.85}
+              >
+                <Avatar
+                  value={k.avatar}
+                  name={k.name}
+                  size={42}
+                  backgroundColor={k.profileColor || SAGE}
+                  emojiSize={22}
+                  style={styles.snapshotAvatarStyle}
+                />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.snapshotName}>{k.name}</Text>
                   <Text style={styles.snapshotMeta}>
@@ -241,11 +296,11 @@ export default function ParentInsightsTab() {
                 </View>
                 <View style={styles.snapshotScore}>
                   <Text style={styles.snapshotScoreValue}>
-                    {childAvg || '—'}
+                    {childAvg ?? '—'}
                   </Text>
                   <Text style={styles.snapshotScoreLabel}>AVG MOOD</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })
         )}
@@ -444,15 +499,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.gray100,
   },
-  snapshotAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: SPACING.md,
-  },
-  snapshotAvatarText: { fontSize: 22 },
+  snapshotAvatarStyle: { marginRight: SPACING.md },
   snapshotName: {
     fontSize: 14,
     fontWeight: '800',

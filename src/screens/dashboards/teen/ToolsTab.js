@@ -16,10 +16,27 @@ import {
   BORDER_RADIUS,
   SHADOWS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
-import { WORKSHEET_TEMPLATES } from '../../../data/worksheetTemplates';
+import {
+  listMyAssignments,
+  listWorksheets,
+} from '../../../services/api';
 
-const STATUS_PROGRESS = { pending: 0, 'in-progress': 50, completed: 100 };
+const STATUS_PROGRESS = {
+  not_started: 0,
+  in_progress: 50,
+  completed: 100,
+  overdue: 0,
+};
+
+const PROGRAM_LABEL = {
+  gottman_12week: 'Gottman 12-Week',
+  psychodynamic_suite: 'Psychodynamic Suite',
+};
+
+const PROGRAM_EMOJI = {
+  gottman_12week: '💞',
+  psychodynamic_suite: '🧠',
+};
 
 const COPING_TOOLS = [
   {
@@ -64,6 +81,7 @@ export default function TeenToolsTab() {
   const navigation = useNavigation();
   const [activeSegment, setActiveSegment] = useState('worksheets');
   const [assignments, setAssignments] = useState([]);
+  const [worksheetsById, setWorksheetsById] = useState({});
   const [programs, setPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -73,20 +91,30 @@ export default function TeenToolsTab() {
       (async () => {
         try {
           setLoading(true);
-          await dataStore.initialize();
-          const user = await dataStore.getCurrentUser();
+          const [assigns, allWS] = await Promise.all([
+            listMyAssignments(),
+            listWorksheets(),
+          ]);
           if (cancelled) return;
-          if (user) {
-            const list = await dataStore.getAssignmentsByClient(user.id);
-            if (cancelled) return;
-            setAssignments(list || []);
-            try {
-              const p = await dataStore.getAllPrograms?.();
-              if (!cancelled && Array.isArray(p)) setPrograms(p);
-            } catch (e) {
-              // Optional API
+          setAssignments(assigns || []);
+
+          const map = {};
+          (allWS || []).forEach((w) => { map[w.id] = w; });
+          setWorksheetsById(map);
+
+          // Build a "programs" list from teen-targeted worksheets that have
+          // a program_id. One entry per distinct program.
+          const teenSheets = (allWS || []).filter(
+            (w) => (w.audience === 'teen' || w.audience === 'all') && w.programId
+          );
+          const byProgram = {};
+          teenSheets.forEach((w) => {
+            if (!byProgram[w.programId]) {
+              byProgram[w.programId] = { id: w.programId, modules: 0, sample: w };
             }
-          }
+            byProgram[w.programId].modules += 1;
+          });
+          setPrograms(Object.values(byProgram));
         } catch (e) {
           console.log('[Teen ToolsTab] load error', e);
         } finally {
@@ -112,7 +140,7 @@ export default function TeenToolsTab() {
   const segments = [
     { id: 'worksheets', label: 'Worksheets', count: assignments.length },
     { id: 'coping', label: 'Coping', count: COPING_TOOLS.length },
-    { id: 'programs', label: 'Programs', count: programs.length || 4 },
+    { id: 'programs', label: 'Programs', count: programs.length },
   ];
 
   return (
@@ -183,11 +211,11 @@ export default function TeenToolsTab() {
               </View>
             ) : (
               assignments.map((a) => {
-                const w = WORKSHEET_TEMPLATES[a.worksheetId];
+                const w = worksheetsById[a.worksheetId];
                 if (!w) return null;
-                const progress = STATUS_PROGRESS[a.status] ?? 0;
+                const progress = a.progress ?? STATUS_PROGRESS[a.status] ?? 0;
                 const isDone = a.status === 'completed';
-                const isProg = a.status === 'in-progress';
+                const isProg = a.status === 'in_progress';
                 const statusLabel = isDone
                   ? 'Completed'
                   : isProg
@@ -327,78 +355,40 @@ export default function TeenToolsTab() {
               <Text style={styles.programHeroEmoji}>🎯</Text>
             </TouchableOpacity>
 
-            {[
-              {
-                id: 1,
-                title: 'Anxiety Mastery',
-                sub: '6-week CBT track',
-                modules: 12,
-                tag: 'POPULAR',
-                emoji: '🌱',
-              },
-              {
-                id: 2,
-                title: 'Confidence Builder',
-                sub: '4-week self-esteem program',
-                modules: 8,
-                tag: 'NEW',
-                emoji: '💪',
-              },
-              {
-                id: 3,
-                title: 'Sleep & Stress',
-                sub: '3-week wellness reset',
-                modules: 6,
-                tag: null,
-                emoji: '🌙',
-              },
-              {
-                id: 4,
-                title: 'Social Skills',
-                sub: '5-week DBT practice',
-                modules: 10,
-                tag: null,
-                emoji: '🤝',
-              },
-            ].map((p) => (
+            {programs.length === 0 && !loading && (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyEmoji}>🎯</Text>
+                <Text style={styles.emptyTitle}>No programs yet</Text>
+                <Text style={styles.emptyText}>
+                  Multi-session programs your therapist publishes will appear
+                  here.
+                </Text>
+              </View>
+            )}
+            {programs.map((p) => (
               <TouchableOpacity
                 key={p.id}
                 style={styles.programCard}
-                onPress={() => navigation.navigate('TherapyPrograms')}
+                onPress={() =>
+                  navigation.navigate('TherapyPrograms', { programId: p.id })
+                }
                 activeOpacity={0.9}
               >
                 <View style={styles.programIconBox}>
-                  <Text style={styles.programIcon}>{p.emoji}</Text>
+                  <Text style={styles.programIcon}>
+                    {PROGRAM_EMOJI[p.id] || '📚'}
+                  </Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={styles.programTitleRow}>
                     <Text style={styles.programTitle} numberOfLines={1}>
-                      {p.title}
+                      {PROGRAM_LABEL[p.id] || p.id}
                     </Text>
-                    {p.tag && (
-                      <View
-                        style={[
-                          styles.programTag,
-                          p.tag === 'NEW' && {
-                            backgroundColor: COLORS.accent3 + '20',
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.programTagText,
-                            p.tag === 'NEW' && { color: COLORS.accent3 },
-                          ]}
-                        >
-                          {p.tag}
-                        </Text>
-                      </View>
-                    )}
                   </View>
                   <Text style={styles.programSub} numberOfLines={1}>
-                    {p.sub}
+                    Structured program · {p.modules}{' '}
+                    {p.modules === 1 ? 'module' : 'modules'}
                   </Text>
-                  <Text style={styles.programMeta}>{p.modules} modules</Text>
                 </View>
                 <Text style={styles.programChev}>›</Text>
               </TouchableOpacity>

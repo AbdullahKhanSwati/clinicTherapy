@@ -11,6 +11,7 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import useSafeGoBack from '../hooks/useSafeGoBack';
 import { Feather } from '@expo/vector-icons';
 import {
   COLORS,
@@ -19,7 +20,11 @@ import {
   BORDER_RADIUS,
   SHADOWS,
 } from '../constants/colors';
-import dataStore from '../utils/dataStore';
+import {
+  getCurrentProfile,
+  listResources,
+  listMyClientResources,
+} from '../services/api';
 
 const TYPE_ICON = {
   article: 'file-text',
@@ -36,6 +41,7 @@ const TYPE_COLOR = {
 };
 
 export default function ResourcesScreen({ navigation }) {
+  const goBack = useSafeGoBack();
   const [user, setUser] = useState(null);
   const [allResources, setAllResources] = useState([]);
   const [assigned, setAssigned] = useState([]);
@@ -47,13 +53,12 @@ export default function ResourcesScreen({ navigation }) {
     (async () => {
       try {
         setLoading(true);
-        await dataStore.initialize();
-        const u = await dataStore.getCurrentUser();
-        setUser(u);
-        const [all, mine] = await Promise.all([
-          dataStore.getResources(),
-          u ? dataStore.getClientResourcesByClient(u.id) : Promise.resolve([]),
+        const [u, all, mine] = await Promise.all([
+          getCurrentProfile(),
+          listResources(),
+          listMyClientResources(),
         ]);
+        setUser(u);
         setAllResources(all || []);
         setAssigned(mine || []);
       } catch (e) {
@@ -117,7 +122,7 @@ export default function ResourcesScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={8}>
+        <TouchableOpacity onPress={() => goBack()} hitSlop={8}>
           <Feather name="arrow-left" size={20} color={COLORS.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>Resources</Text>

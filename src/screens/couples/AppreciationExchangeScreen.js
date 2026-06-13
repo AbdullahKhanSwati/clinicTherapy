@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -18,7 +18,13 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  getActivePairingForUser,
+  getPartnerProfileForUser,
+  listAppreciationsForUser,
+  sendAppreciation,
+} from '../../services/api';
 
 const INK = '#1A2332';
 const BLUSH = '#D4536B';
@@ -51,9 +57,9 @@ const TYPES = [
 ];
 
 export default function AppreciationExchangeScreen({ navigation }) {
-  const [user, setUser] = useState(null);
+  const { profile: user } = useAuth();
+  const [pairing, setPairing] = useState(null);
   const [partner, setPartner] = useState(null);
-  const [partnerId, setPartnerId] = useState(null);
   const [received, setReceived] = useState([]);
   const [sent, setSent] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -63,28 +69,27 @@ export default function AppreciationExchangeScreen({ navigation }) {
   const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(async () => {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
-      await dataStore.initialize();
-      const u = await dataStore.getCurrentUser();
-      setUser(u);
-      if (u) {
-        const pid = await dataStore.getPartnerIdForUser(u.id);
-        setPartnerId(pid);
-        if (pid) {
-          const p = await dataStore.getUserById(pid);
-          setPartner(p);
-        }
-        const all = await dataStore.getAppreciationsForUser(u.id);
-        setReceived(all.filter((a) => a.toUserId === u.id));
-        setSent(all.filter((a) => a.fromUserId === u.id));
+      const p = await getActivePairingForUser(user.id);
+      setPairing(p);
+      if (p) {
+        const partnerProfile = await getPartnerProfileForUser(user.id);
+        setPartner(partnerProfile);
       }
+      const all = await listAppreciationsForUser(user.id);
+      setReceived((all || []).filter((a) => a.toUserId === user.id));
+      setSent((all || []).filter((a) => a.fromUserId === user.id));
     } catch (e) {
       console.log('[Appreciation] load', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -92,18 +97,20 @@ export default function AppreciationExchangeScreen({ navigation }) {
     }, [load])
   );
 
+  const partnerId = partner?.id || null;
   const canSubmit = text.trim().length > 0 && partnerId && !submitting;
 
   const handleSend = async () => {
     if (!canSubmit) return;
     try {
       setSubmitting(true);
-      await dataStore.sendAppreciation(
-        user.id,
-        partnerId,
-        selectedType,
-        text.trim()
-      );
+      await sendAppreciation({
+        pairingId: pairing.id,
+        fromUserId: user.id,
+        toUserId: partnerId,
+        message: text.trim(),
+        type: selectedType,
+      });
       setText('');
       Alert.alert(
         'Sent ✓',
@@ -115,7 +122,7 @@ export default function AppreciationExchangeScreen({ navigation }) {
       load();
     } catch (e) {
       console.log('[Appreciation] send', e);
-      Alert.alert('Error', 'Could not send. Try again.');
+      Alert.alert('Error', e.message || 'Could not send. Try again.');
     } finally {
       setSubmitting(false);
     }
@@ -155,13 +162,14 @@ export default function AppreciationExchangeScreen({ navigation }) {
           <View style={styles.warningCard}>
             <Feather name="alert-circle" size={20} color={BLUSH} />
             <Text style={styles.warningText}>
-              Link your partner to start exchanging appreciations.
+              Your therapist needs to pair you with your partner before you can
+              exchange appreciations.
             </Text>
             <TouchableOpacity
               style={styles.warningCta}
               onPress={() => navigation.navigate('CouplePairing')}
             >
-              <Text style={styles.warningCtaText}>Link now →</Text>
+              <Text style={styles.warningCtaText}>Status →</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -238,7 +246,7 @@ export default function AppreciationExchangeScreen({ navigation }) {
         {received.length > 0 && (
           <>
             <Text style={[styles.sectionLabel, { marginTop: SPACING.xl }]}>
-              FROM {partner?.name?.split(' ')[0]?.toUpperCase() || 'PARTNER'}
+              FROM {(partner?.name?.split(' ')[0] || 'PARTNER').toUpperCase()}
             </Text>
             {received.slice(0, 5).map((a) => (
               <AppreciationCard key={a.id} item={a} direction="in" />
@@ -279,13 +287,14 @@ const AppreciationCard = ({ item, direction }) => {
         <Text style={styles.cardEyebrow}>
           {type.label.toUpperCase()} · {formatTimeAgo(item.createdAt)}
         </Text>
-        <Text style={styles.cardText}>"{item.text}"</Text>
+        <Text style={styles.cardText}>"{item.message || item.text}"</Text>
       </View>
     </View>
   );
 };
 
 const formatTimeAgo = (iso) => {
+  if (!iso) return '';
   const ms = Date.now() - new Date(iso).getTime();
   const hours = Math.round(ms / 3600000);
   if (hours < 1) return 'just now';

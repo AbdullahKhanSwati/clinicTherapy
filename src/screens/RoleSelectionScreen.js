@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
-import { useAuth } from '../../App';
+import { useAuth } from '../contexts/AuthContext';
 
 const ROLES = [
   {

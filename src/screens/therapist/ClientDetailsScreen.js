@@ -17,8 +17,34 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import { WORKSHEET_TEMPLATES } from '../../data/worksheetTemplates';
-import dataStore from '../../utils/dataStore';
+import {
+  getProfileById,
+  getCurrentProfile,
+  getCurrentUserId,
+  listAssignmentsFor,
+  listResponsesFor,
+  listMoodEntries,
+  listJournalEntries,
+  listNotesForClient,
+  listResources,
+  listClientResources,
+  listTherapistClients,
+  assignClientToTherapist,
+  removeClientResource,
+  listWorksheets,
+} from '../../services/api';
+import Avatar from '../../components/Avatar';
+
+const ACCESSORY_EMOJI = {
+  none: '',
+  crown: '👑',
+  star: '⭐',
+  sparkles: '✨',
+  flower: '🌸',
+  heart: '💖',
+  hat: '🎩',
+  rainbow: '🌈',
+};
 
 const INK = '#1A2332';
 const ACCENT = COLORS.primary;
@@ -78,21 +104,53 @@ export default function ClientDetailsScreen({ route, navigation }) {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      await dataStore.initialize();
-      const [c, a, cw, m, j, n, cr, allRes, custom] = await Promise.all([
-        dataStore.getUserById(clientId),
-        dataStore.getAssignmentsByClient(clientId),
-        dataStore.getCompletedWorksheetsByUser(clientId),
-        dataStore.getMoodEntriesByUser(clientId),
-        dataStore.getJournalEntriesByUser(clientId),
-        dataStore.getNotesByClient(clientId),
-        dataStore.getClientResourcesByClient(clientId),
-        dataStore.getResources(),
-        dataStore.getCustomWorksheets(),
+
+      // Auto-link: if the signed-in therapist isn't yet listed as this
+      // client's therapist, add the link before we fetch their data — RLS
+      // for journal_entries / notes / etc. requires the link to exist.
+      try {
+        const me = await getCurrentProfile();
+        if (
+          me &&
+          clientId &&
+          (me.role === 'therapist' || me.role === 'admin')
+        ) {
+          const existing = await listTherapistClients(me.id);
+          if (!existing.includes(clientId)) {
+            await assignClientToTherapist(me.id, clientId);
+          }
+        }
+      } catch (linkErr) {
+        // Non-fatal — even without the link, RLS still lets admins through.
+        console.log('[ClientDetails] auto-link skipped', linkErr?.message);
+      }
+
+      const [c, a, responses, m, j, n, allRes, cr, custom] = await Promise.all([
+        getProfileById(clientId),
+        listAssignmentsFor(clientId),
+        listResponsesFor(clientId),
+        listMoodEntries(clientId),
+        listJournalEntries(clientId),
+        listNotesForClient(clientId),
+        listResources(),
+        listClientResources(clientId),
+        listWorksheets(),
       ]);
       setClient(c);
       setAssignments(a || []);
-      setCompleted(cw || []);
+      const completedFromResponses = (responses || [])
+        .filter((r) => r.completedAt)
+        .map((r) => {
+          const ass = (a || []).find((aa) => aa.id === r.assignmentId);
+          return {
+            id: r.id,
+            assignmentId: r.assignmentId,
+            worksheetId: ass?.worksheetId,
+            completedDate: r.completedAt,
+          };
+        })
+        .filter((x) => x.worksheetId);
+      setCompleted(completedFromResponses);
       setMoods(m || []);
       setJournals(j || []);
       setNotes(n || []);
@@ -106,11 +164,9 @@ export default function ClientDetailsScreen({ route, navigation }) {
     }
   }, [clientId]);
 
-  // Helper to look up worksheet by id from either built-in templates or custom
+  // Helper to look up worksheet by id from the DB-loaded list
   const findWorksheet = useCallback(
-    (id) =>
-      WORKSHEET_TEMPLATES[id] ||
-      (customWorksheets || []).find((w) => w.id === id),
+    (id) => (customWorksheets || []).find((w) => w.id === id),
     [customWorksheets]
   );
 
@@ -184,7 +240,7 @@ export default function ClientDetailsScreen({ route, navigation }) {
     );
   }
 
-  const roleLabel = ROLE_LABEL[client.role] || client.role.toUpperCase();
+  const roleLabel = ROLE_LABEL[client.role] || (client.role || 'USER').toUpperCase();
   const roleColor = ROLE_COLOR[client.role] || COLORS.gray500;
 
   return (
@@ -211,13 +267,19 @@ export default function ClientDetailsScreen({ route, navigation }) {
         {/* Profile hero */}
         <View>
           <View style={styles.profileCard}>
-            <View
-              style={[
-                styles.avatar,
-                { backgroundColor: client.profileColor || ACCENT },
-              ]}
-            >
-              <Text style={styles.avatarText}>{client.avatar || '👤'}</Text>
+            <View style={styles.avatarWrap}>
+              <Avatar
+                value={client.avatar}
+                name={client.name}
+                size={80}
+                backgroundColor={client.profileColor || ACCENT}
+                emojiSize={42}
+              />
+              {client.accessory && ACCESSORY_EMOJI[client.accessory] ? (
+                <Text style={styles.accessoryBadge}>
+                  {ACCESSORY_EMOJI[client.accessory]}
+                </Text>
+              ) : null}
             </View>
 
             <Text style={styles.clientName}>{client.name}</Text>
@@ -390,7 +452,7 @@ const OverviewSection = ({ client, completed, notes, moods, navigation, findWork
             </Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.lastMoodText}>
-                {lastMood.mood.charAt(0).toUpperCase() + lastMood.mood.slice(1)}{' '}
+                {((lastMood.mood || '').charAt(0).toUpperCase() + (lastMood.mood || '').slice(1)) || '—'}{' '}
                 · intensity {lastMood.intensity}/10
               </Text>
               {lastMood.notes ? (
@@ -420,12 +482,19 @@ const OverviewSection = ({ client, completed, notes, moods, navigation, findWork
           {recentCompleted.map((c, i) => {
             const w = findWorksheet(c.worksheetId);
             return (
-              <View
+              <TouchableOpacity
                 key={c.id}
                 style={[
                   styles.completedRow,
                   i < recentCompleted.length - 1 && styles.borderBottom,
                 ]}
+                onPress={() =>
+                  c.assignmentId &&
+                  navigation.navigate('WorksheetResponse', {
+                    assignmentId: c.assignmentId,
+                  })
+                }
+                activeOpacity={0.7}
               >
                 <View style={styles.completedDot} />
                 <View style={{ flex: 1 }}>
@@ -437,7 +506,8 @@ const OverviewSection = ({ client, completed, notes, moods, navigation, findWork
                     })}
                   </Text>
                 </View>
-              </View>
+                <Feather name="chevron-right" size={16} color={COLORS.gray400} />
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -462,7 +532,7 @@ const OverviewSection = ({ client, completed, notes, moods, navigation, findWork
           <View key={n.id} style={styles.noteCard}>
             <View style={styles.noteHeader}>
               <Text style={styles.noteCategoryBadge}>
-                {n.category.toUpperCase()}
+                {(n.category || 'NOTE').toUpperCase()}
               </Text>
               <Text style={styles.noteDate}>
                 {new Date(n.date).toLocaleDateString('en-US', {
@@ -504,28 +574,36 @@ const WorksheetsSection = ({ assignments, completed, client, navigation, findWor
         const w = findWorksheet(a.worksheetId);
         if (!w) return null;
         const isDone = a.status === 'completed';
-        const isOverdue = !isDone && new Date(a.dueDate) < new Date();
+        const isOverdue = !isDone && a.dueDate && new Date(a.dueDate) < new Date();
+        const isInProgress = a.status === 'in_progress' || a.status === 'in-progress';
         const statusColor = isDone
           ? SUCCESS
           : isOverdue
           ? DANGER
-          : a.status === 'in-progress'
+          : isInProgress
           ? WARNING
           : ACCENT;
         const statusLabel = isDone
           ? 'COMPLETED'
           : isOverdue
           ? 'OVERDUE'
-          : a.status === 'in-progress'
+          : isInProgress
           ? 'IN PROGRESS'
           : 'PENDING';
 
         return (
-          <View key={a.id} style={styles.assignmentCard}>
+          <TouchableOpacity
+            key={a.id}
+            style={styles.assignmentCard}
+            onPress={() =>
+              navigation.navigate('WorksheetResponse', { assignmentId: a.id })
+            }
+            activeOpacity={0.9}
+          >
             <View style={styles.assignmentTop}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.assignmentCategory}>
-                  {w.category.toUpperCase()}
+                  {(w.category || '').toUpperCase()}
                 </Text>
                 <Text style={styles.assignmentTitle}>{w.title}</Text>
               </View>
@@ -576,6 +654,18 @@ const WorksheetsSection = ({ assignments, completed, client, navigation, findWor
                   </Text>
                 </View>
               )}
+              {(a.progress > 0 || isDone) && (
+                <View style={styles.metaItem}>
+                  <Feather
+                    name="bar-chart-2"
+                    size={11}
+                    color={COLORS.gray500}
+                  />
+                  <Text style={styles.metaText}>
+                    {isDone ? '100%' : `${a.progress}%`} done
+                  </Text>
+                </View>
+              )}
             </View>
 
             {a.notes && (
@@ -583,7 +673,18 @@ const WorksheetsSection = ({ assignments, completed, client, navigation, findWor
                 "{a.notes}"
               </Text>
             )}
-          </View>
+
+            <View style={styles.reviewCta}>
+              <Text style={styles.reviewCtaText}>
+                {isDone
+                  ? 'Review answers'
+                  : isInProgress
+                  ? 'View progress'
+                  : 'Open worksheet'}
+              </Text>
+              <Feather name="chevron-right" size={16} color={ACCENT} />
+            </View>
+          </TouchableOpacity>
         );
       })}
     </View>
@@ -612,7 +713,7 @@ const MoodSection = ({ moods }) => {
           <View style={{ flex: 1 }}>
             <View style={styles.moodTitleRow}>
               <Text style={styles.moodMood}>
-                {m.mood.charAt(0).toUpperCase() + m.mood.slice(1)}
+                {((m.mood || '').charAt(0).toUpperCase() + (m.mood || '').slice(1)) || '—'}
               </Text>
               <Text style={styles.moodIntensity}>{m.intensity}/10</Text>
             </View>
@@ -702,7 +803,7 @@ const ResourcesSection = ({
           style: 'destructive',
           onPress: async () => {
             try {
-              await dataStore.removeClientResource(assignment.id);
+              await removeClientResource(assignment.id);
               onReload?.();
             } catch (e) {
               console.log('[ClientDetails] remove resource error', e);
@@ -814,7 +915,7 @@ const NotesSection = ({ notes, client, navigation }) => {
           <View key={n.id} style={styles.noteCard}>
             <View style={styles.noteHeader}>
               <Text style={styles.noteCategoryBadge}>
-                {n.category.toUpperCase()}
+                {(n.category || 'NOTE').toUpperCase()}
               </Text>
               <Text style={styles.noteDate}>
                 {new Date(n.date).toLocaleString('en-US', {
@@ -873,6 +974,16 @@ const styles = StyleSheet.create({
   },
 
   /* Profile hero */
+  avatarWrap: {
+    position: 'relative',
+    marginBottom: SPACING.md,
+  },
+  accessoryBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -6,
+    fontSize: 26,
+  },
   profileCard: {
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.xl,
@@ -1206,6 +1317,22 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.gray100,
     lineHeight: 18,
+  },
+  reviewCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: SPACING.sm,
+    paddingTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray100,
+  },
+  reviewCtaText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: ACCENT,
+    letterSpacing: 0.3,
+    marginRight: 2,
   },
 
   /* Mood card */

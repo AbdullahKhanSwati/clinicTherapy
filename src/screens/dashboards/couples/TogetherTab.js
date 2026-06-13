@@ -15,14 +15,24 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
-import { WORKSHEET_TEMPLATES } from '../../../data/worksheetTemplates';
+import { useAuth } from '../../../contexts/AuthContext';
+import {
+  listMyAssignments,
+  listWorksheets,
+  listDateIdeas,
+  listSharedGoals,
+  getActivePairingForUser,
+} from '../../../services/api';
 
 const BLUSH = '#D4536B';
 const INK = '#1A2332';
 const CREAM = '#FAF7F2';
 
-const STATUS_PROGRESS = { pending: 0, 'in-progress': 50, completed: 100 };
+const STATUS_LABEL = {
+  not_started: 'NOT STARTED',
+  in_progress: 'IN PROGRESS',
+  completed: 'COMPLETED',
+};
 
 const EXERCISES = [
   {
@@ -59,33 +69,41 @@ const EXERCISES = [
   },
 ];
 
-// Date ideas come live from the admin dataStore now.
-
 export default function CouplesTogetherTab() {
   const navigation = useNavigation();
+  const { profile: user } = useAuth();
   const [activeSegment, setActiveSegment] = useState('worksheets');
   const [assignments, setAssignments] = useState([]);
+  const [worksheetsById, setWorksheetsById] = useState({});
   const [dateIdeas, setDateIdeas] = useState([]);
+  const [goals, setGoals] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
+        if (!user?.id) return;
         try {
           setLoading(true);
-          await dataStore.initialize();
-          const user = await dataStore.getCurrentUser();
+          const [assigns, allWS, ideas, pair] = await Promise.all([
+            listMyAssignments(),
+            listWorksheets(),
+            listDateIdeas(),
+            getActivePairingForUser(user.id),
+          ]);
           if (cancelled) return;
-          if (user) {
-            const [list, ideas] = await Promise.all([
-              dataStore.getAssignmentsByClient(user.id),
-              dataStore.getDateIdeas(),
-            ]);
-            if (!cancelled) {
-              setAssignments(list || []);
-              setDateIdeas(ideas || []);
-            }
+          setAssignments(assigns || []);
+          const map = {};
+          (allWS || []).forEach((w) => { map[w.id] = w; });
+          setWorksheetsById(map);
+          setDateIdeas(ideas || []);
+
+          if (pair?.id) {
+            const g = await listSharedGoals(pair.id);
+            if (!cancelled) setGoals(g || []);
+          } else {
+            setGoals([]);
           }
         } catch (e) {
           console.log('[Couples TogetherTab] load error', e);
@@ -96,7 +114,7 @@ export default function CouplesTogetherTab() {
       return () => {
         cancelled = true;
       };
-    }, [])
+    }, [user?.id])
   );
 
   const openDrawer = () => navigation.dispatch(DrawerActions.openDrawer());
@@ -111,8 +129,9 @@ export default function CouplesTogetherTab() {
 
   const segments = [
     { id: 'worksheets', label: 'Worksheets', count: assignments.length },
-    { id: 'exercises', label: 'Practices', count: EXERCISES.length },
-    { id: 'dates', label: 'Date Ideas', count: dateIdeas.length },
+    { id: 'exercises',  label: 'Practices',  count: EXERCISES.length },
+    { id: 'goals',      label: 'Goals',      count: goals.length },
+    { id: 'dates',      label: 'Date Ideas', count: dateIdeas.length },
   ];
 
   return (
@@ -169,16 +188,12 @@ export default function CouplesTogetherTab() {
               </View>
             ) : (
               assignments.map((a) => {
-                const w = WORKSHEET_TEMPLATES[a.worksheetId];
+                const w = worksheetsById[a.worksheetId];
                 if (!w) return null;
-                const progress = STATUS_PROGRESS[a.status] ?? 0;
+                const progress = a.progress ?? 0;
                 const isDone = a.status === 'completed';
-                const isProg = a.status === 'in-progress';
-                const statusLabel = isDone
-                  ? 'COMPLETED'
-                  : isProg
-                  ? 'IN PROGRESS'
-                  : 'NOT STARTED';
+                const isProg = a.status === 'in_progress';
+                const statusLabel = STATUS_LABEL[a.status] || 'NOT STARTED';
                 const statusColor = isDone
                   ? COLORS.success
                   : isProg
@@ -192,7 +207,9 @@ export default function CouplesTogetherTab() {
                     activeOpacity={0.9}
                   >
                     <View style={styles.wsTopRow}>
-                      <Text style={styles.wsCategory}>{w.category.toUpperCase()}</Text>
+                      <Text style={styles.wsCategory}>
+                        {(w.category || 'WORKSHEET').toUpperCase()}
+                      </Text>
                       <View style={styles.wsStatusRow}>
                         <View
                           style={[styles.wsStatusDot, { backgroundColor: statusColor }]}
@@ -205,9 +222,11 @@ export default function CouplesTogetherTab() {
                     <Text style={styles.wsTitle} numberOfLines={1}>
                       {w.title}
                     </Text>
-                    <Text style={styles.wsDesc} numberOfLines={2}>
-                      {w.description}
-                    </Text>
+                    {w.description ? (
+                      <Text style={styles.wsDesc} numberOfLines={2}>
+                        {w.description}
+                      </Text>
+                    ) : null}
                     <View style={styles.wsDivider} />
                     <View style={styles.wsFooter}>
                       <View style={styles.wsMetaRow}>
@@ -277,6 +296,78 @@ export default function CouplesTogetherTab() {
           </>
         )}
 
+        {activeSegment === 'goals' && (
+          <>
+            <View style={styles.exerciseIntro}>
+              <Text style={styles.exerciseIntroEyebrow}>SHARED GOALS</Text>
+              <Text style={styles.exerciseIntroTitle}>
+                Things you're working on together
+              </Text>
+              <Text style={styles.exerciseIntroBody}>
+                Your therapist sets these in your treatment plan. Tap one to see the brief.
+              </Text>
+            </View>
+
+            {goals.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyTitle}>No shared goals yet</Text>
+                <Text style={styles.emptyText}>
+                  Your therapist hasn't set shared goals for the two of you yet.
+                </Text>
+              </View>
+            ) : (
+              goals.map((g, idx) => {
+                const isDone = g.progress >= 100 || !!g.completedAt;
+                const statusColor = isDone
+                  ? COLORS.success
+                  : g.progress > 0
+                  ? COLORS.warning
+                  : COLORS.gray400;
+                return (
+                  <View key={g.id} style={styles.wsCard}>
+                    <View style={styles.wsTopRow}>
+                      <Text style={styles.wsCategory}>
+                        GOAL · {String(idx + 1).padStart(2, '0')}
+                      </Text>
+                      <View style={styles.wsStatusRow}>
+                        <View
+                          style={[styles.wsStatusDot, { backgroundColor: statusColor }]}
+                        />
+                        <Text style={[styles.wsStatusText, { color: statusColor }]}>
+                          {isDone ? 'COMPLETED' : g.progress > 0 ? 'IN PROGRESS' : 'NOT STARTED'}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.wsTitle} numberOfLines={2}>
+                      {g.title}
+                    </Text>
+                    {g.description ? (
+                      <Text style={styles.wsDesc} numberOfLines={3}>
+                        {g.description}
+                      </Text>
+                    ) : null}
+                    <View style={styles.wsDivider} />
+                    <View style={styles.wsFooter}>
+                      <Text style={styles.wsMetaLabel}>{g.progress || 0}% complete</Text>
+                    </View>
+                    <View style={styles.wsProgressTrack}>
+                      <View
+                        style={[
+                          styles.wsProgressFill,
+                          {
+                            width: `${g.progress || 0}%`,
+                            backgroundColor: statusColor,
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </>
+        )}
+
         {activeSegment === 'dates' && (
           <>
             <View style={styles.dateIntro}>
@@ -305,10 +396,10 @@ export default function CouplesTogetherTab() {
                     {String(idx + 1).padStart(2, '0')}
                   </Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.dateTag}>{d.tag}</Text>
+                    <Text style={styles.dateTag}>{(d.category || 'IDEA').toUpperCase()}</Text>
                     <Text style={styles.dateTitle}>{d.title}</Text>
                     <Text style={styles.dateSub}>
-                      {d.description || d.sub}
+                      {d.description || d.body || ''}
                     </Text>
                   </View>
                 </TouchableOpacity>

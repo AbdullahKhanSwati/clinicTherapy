@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import useSafeGoBack from '../../hooks/useSafeGoBack';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/colors';
 
 const STEPS = [
@@ -42,6 +43,7 @@ const STEPS = [
 ];
 
 export default function VisualizationScreen({ navigation }) {
+  const goBack = useSafeGoBack();
   const [stepIndex, setStepIndex] = useState(0);
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
@@ -49,7 +51,7 @@ export default function VisualizationScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={8}>
+        <TouchableOpacity onPress={() => goBack()} hitSlop={8}>
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>
@@ -85,7 +87,7 @@ export default function VisualizationScreen({ navigation }) {
         <TouchableOpacity
           style={styles.primaryBtn}
           onPress={() => {
-            if (isLast) navigation.goBack();
+            if (isLast) goBack();
             else setStepIndex(stepIndex + 1);
           }}
         >

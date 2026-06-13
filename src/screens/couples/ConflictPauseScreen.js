@@ -17,7 +17,12 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  getActivePairingForUser,
+  startConflictPause,
+  completeConflictPause,
+} from '../../services/api';
 
 const INK = '#1A2332';
 const BLUSH = '#D4536B';
@@ -32,8 +37,8 @@ const CREAM = '#FAF7F2';
  *   3. Return: a fillable script for what to say when re-engaging.
  */
 export default function ConflictPauseScreen({ navigation }) {
-  const [user, setUser] = useState(null);
-  const [partnerId, setPartnerId] = useState(null);
+  const { profile: user } = useAuth();
+  const [pairing, setPairing] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [pauseId, setPauseId] = useState(null);
@@ -46,33 +51,38 @@ export default function ConflictPauseScreen({ navigation }) {
   const [needNow, setNeedNow] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      if (!user?.id) {
+        setLoading(false);
+        return;
+      }
       try {
-        await dataStore.initialize();
-        const u = await dataStore.getCurrentUser();
-        setUser(u);
-        if (u) {
-          const pid = await dataStore.getPartnerIdForUser(u.id);
-          setPartnerId(pid);
-        }
+        const p = await getActivePairingForUser(user.id);
+        if (!cancelled) setPairing(p);
       } catch (e) {
         console.log('[ConflictPause] load', e);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
+      cancelled = true;
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, []);
+  }, [user?.id]);
 
   const startPause = async (mins) => {
+    if (!pairing?.id) {
+      Alert.alert('No partner linked', 'Your therapist needs to pair you first.');
+      return;
+    }
     try {
-      const pause = await dataStore.startConflictPause(
-        user?.id,
-        partnerId,
-        mins
-      );
+      const pause = await startConflictPause({
+        startedBy: user.id,
+        pairingId: pairing.id,
+        durationMinutes: mins,
+      });
       setPauseId(pause.id);
       setDuration(mins);
       setRemainingSec(mins * 60);
@@ -90,7 +100,7 @@ export default function ConflictPauseScreen({ navigation }) {
       }, 1000);
     } catch (e) {
       console.log('[ConflictPause] start', e);
-      Alert.alert('Error', 'Could not start the pause. Try again.');
+      Alert.alert('Error', e.message || 'Could not start the pause. Try again.');
     }
   };
 
@@ -118,7 +128,7 @@ export default function ConflictPauseScreen({ navigation }) {
     try {
       if (pauseId) {
         const returnNote = `Felt: ${feelingUnderneath.trim()} | Need: ${needNow.trim()}`;
-        await dataStore.completeConflictPause(pauseId, returnNote);
+        await completeConflictPause(pauseId, returnNote);
       }
       Alert.alert(
         'Pause complete',
@@ -141,10 +151,42 @@ export default function ConflictPauseScreen({ navigation }) {
     );
   }
 
+  if (!pairing && stage === 'idle') {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => navigation.goBack()}
+          >
+            <Feather name="x" size={20} color={INK} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: SPACING.md }}>
+            <Text style={styles.eyebrow}>WE NEED A PAUSE</Text>
+            <Text style={styles.headerTitle}>Take a Pause</Text>
+          </View>
+        </View>
+        <View style={styles.center}>
+          <Feather name="users" size={32} color={COLORS.gray300} />
+          <Text style={styles.notPairedTitle}>No partner linked yet</Text>
+          <Text style={styles.notPairedText}>
+            Pauses are shared with your partner. Ask your therapist to pair you first.
+          </Text>
+          <TouchableOpacity
+            style={styles.notPairedBtn}
+            onPress={() => navigation.replace('CouplePairing')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.notPairedBtnText}>View Pairing Status</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   const mins = Math.floor(remainingSec / 60);
   const secs = remainingSec % 60;
-  const progress =
-    duration > 0 ? 1 - remainingSec / (duration * 60) : 0;
+  const progress = duration > 0 ? 1 - remainingSec / (duration * 60) : 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -357,7 +399,7 @@ const Tip = ({ text }) => (
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl },
 
   headerRow: {
     flexDirection: 'row',
@@ -620,6 +662,33 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 14,
     marginLeft: 8,
+    letterSpacing: 0.2,
+  },
+
+  notPairedTitle: {
+    fontSize: TYPOGRAPHY.base,
+    fontWeight: '800',
+    color: INK,
+    marginTop: SPACING.md,
+    marginBottom: 6,
+  },
+  notPairedText: {
+    fontSize: 13,
+    color: COLORS.gray500,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+    lineHeight: 20,
+  },
+  notPairedBtn: {
+    backgroundColor: INK,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.full,
+  },
+  notPairedBtnText: {
+    color: COLORS.white,
+    fontWeight: '700',
+    fontSize: 13,
     letterSpacing: 0.2,
   },
 });

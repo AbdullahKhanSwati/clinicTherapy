@@ -5,6 +5,7 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, DrawerActions } from '@react-navigation/native';
@@ -15,7 +16,11 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
+import {
+  listAllProfiles,
+  listAssignments,
+  listAllMoodEntries,
+} from '../../../services/api';
 
 const INK = '#1A2332';
 const ACCENT = COLORS.primary;
@@ -55,28 +60,42 @@ export default function TherapistInsightsTab() {
   const [assignments, setAssignments] = useState([]);
   const [moods, setMoods] = useState([]);
   const [completed, setCompleted] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
         try {
-          await dataStore.initialize();
-          const [users, a, m, c] = await Promise.all([
-            dataStore.getUsers(),
-            dataStore.getWorksheetAssignments(),
-            dataStore.getMoodEntries(),
-            dataStore.getWorksheetsCompleted(),
+          setLoading(true);
+          const [profiles, a, m] = await Promise.all([
+            listAllProfiles(),
+            listAssignments(),
+            listAllMoodEntries(),
           ]);
           if (cancelled) return;
           setClients(
-            Object.values(users || {}).filter((u) => u.role !== 'therapist')
+            (profiles || []).filter(
+              (u) => u.role !== 'therapist' && u.role !== 'admin'
+            )
           );
           setAssignments(a || []);
           setMoods(m || []);
-          setCompleted(c || []);
+          // Derive "completed" from assignments — DB doesn't keep a separate
+          // completion log; completion is just status === 'completed'.
+          const completedFromAssignments = (a || [])
+            .filter((x) => x.status === 'completed')
+            .map((x) => ({
+              id: x.id,
+              userId: x.assigneeId,
+              worksheetId: x.worksheetId,
+              completedDate: x.updatedAt || x.createdAt,
+            }));
+          setCompleted(completedFromAssignments);
         } catch (e) {
           console.log('[Therapist InsightsTab] load error', e);
+        } finally {
+          if (!cancelled) setLoading(false);
         }
       })();
       return () => {
@@ -185,6 +204,12 @@ export default function TherapistInsightsTab() {
             <Text style={styles.headerTitle}>Insights</Text>
           </View>
         </View>
+
+        {loading && (
+          <View style={{ paddingVertical: SPACING.lg, alignItems: 'center' }}>
+            <ActivityIndicator color={INK} />
+          </View>
+        )}
 
         {/* Snapshot card */}
         <View style={styles.snapshotCard}>

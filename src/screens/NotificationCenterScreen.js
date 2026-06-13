@@ -9,19 +9,28 @@ import {
   Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import useSafeGoBack from '../hooks/useSafeGoBack';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
-import dataStore from '../utils/dataStore';
+import {
+  listMyNotifications,
+  markNotificationRead,
+  getCurrentUserId,
+  markAllNotificationsRead,
+} from '../services/api';
 
+// Display config keyed by the lowercase DB enum values
 const NOTIFICATION_TYPES = {
-  WORKSHEET_ASSIGNED: { icon: '📋', label: 'Worksheet Assigned', color: COLORS.primary },
-  PROGRESS_UPDATE: { icon: '📈', label: 'Progress Update', color: COLORS.success },
-  MOOD_ALERT: { icon: '⚠️', label: 'Mood Alert', color: COLORS.warning },
-  SESSION_REMINDER: { icon: '📅', label: 'Session Reminder', color: COLORS.info },
-  THERAPIST_NOTE: { icon: '💬', label: 'Message from Therapist', color: COLORS.primary },
-  ACHIEVEMENT: { icon: '🏆', label: 'Achievement Unlocked', color: COLORS.success },
+  worksheet_assigned: { icon: '📋', label: 'Worksheet Assigned', color: COLORS.primary },
+  mood_alert:         { icon: '⚠️', label: 'Mood Alert',         color: COLORS.warning },
+  therapist_note:     { icon: '💬', label: 'Therapist Note',     color: COLORS.primary },
+  check_in_request:   { icon: '📅', label: 'Check-In Request',   color: COLORS.info || COLORS.primary },
+  partner_activity:   { icon: '💞', label: 'Partner Activity',   color: COLORS.primary },
+  badge_earned:       { icon: '🏆', label: 'Badge Earned',       color: COLORS.success },
+  system:             { icon: '🔔', label: 'Notification',       color: COLORS.gray500 },
 };
 
 export default function NotificationCenterScreen({ navigation }) {
+  const goBack = useSafeGoBack();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [preferences, setPreferences] = useState({
@@ -40,57 +49,51 @@ export default function NotificationCenterScreen({ navigation }) {
   const loadNotifications = async () => {
     try {
       setLoading(true);
-      await dataStore.initialize();
-      const mockNotifications = [
-        {
-          id: 1,
-          type: 'WORKSHEET_ASSIGNED',
-          title: 'New Worksheet Available',
-          message: 'Your therapist assigned "Cognitive Restructuring" worksheet',
-          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-          read: false,
-        },
-        {
-          id: 2,
-          type: 'PROGRESS_UPDATE',
-          title: 'Great Progress!',
-          message: 'You have completed 5 worksheets this week. Keep it up!',
-          timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-          read: false,
-        },
-        {
-          id: 3,
-          type: 'SESSION_REMINDER',
-          title: 'Upcoming Session',
-          message: 'Your therapy session is tomorrow at 2:00 PM',
-          timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-          read: true,
-        },
-        {
-          id: 4,
-          type: 'ACHIEVEMENT',
-          title: 'Achievement Unlocked',
-          message: 'You earned the "Consistent" badge for completing worksheets daily',
-          timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-          read: true,
-        },
-      ];
-      setNotifications(mockNotifications);
+      const list = await listMyNotifications();
+      // Adapt the camelCase API rows to the shape this screen renders.
+      setNotifications(
+        (list || []).map((n) => ({
+          id: n.id,
+          type: n.type,
+          title: n.title,
+          message: n.body || '',
+          timestamp: new Date(n.createdAt),
+          read: !!n.readAt,
+        }))
+      );
     } catch (error) {
-      console.error('[v0] Error loading notifications:', error);
+      console.error('[Notifications] load error', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const markAsRead = (id) => {
-    setNotifications(notifications.map(n =>
-      n.id === id ? { ...n, read: true } : n
-    ));
+  const markAsRead = async (id) => {
+    // Optimistic UI flip + persist.
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+    try {
+      await markNotificationRead(id);
+    } catch (e) {
+      console.log('[Notifications] mark read error', e);
+    }
   };
 
+  const markAllRead = async () => {
+    try {
+      const uid = await getCurrentUserId();
+      if (!uid) return;
+      await markAllNotificationsRead(uid);
+      await loadNotifications();
+    } catch (e) {
+      console.log('[Notifications] mark all read error', e);
+    }
+  };
+
+  // Per-row delete isn't supported in the schema; mark as read instead.
   const deleteNotification = (id) => {
-    setNotifications(notifications.filter(n => n.id !== id));
+    markAsRead(id);
   };
 
   const togglePreference = (key) => {
@@ -106,7 +109,7 @@ export default function NotificationCenterScreen({ navigation }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => goBack()}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Notifications</Text>
@@ -128,7 +131,7 @@ export default function NotificationCenterScreen({ navigation }) {
             </View>
           ) : (
             notifications.map(notif => {
-              const typeInfo = NOTIFICATION_TYPES[notif.type];
+              const typeInfo = NOTIFICATION_TYPES[notif.type] || NOTIFICATION_TYPES.system;
               return (
                 <View
                   key={notif.id}
@@ -208,11 +211,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: TYPOGRAPHY.xl,
     fontWeight: '700',
-    color: COLORS.gray900,
+    color: COLORS.gray700,
     flex: 1,
   },
   badge: {
-    backgroundColor: COLORS.danger,
+    backgroundColor: COLORS.error,
     borderRadius: 12,
     width: 24,
     height: 24,

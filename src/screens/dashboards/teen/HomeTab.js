@@ -16,8 +16,15 @@ import {
   BORDER_RADIUS,
   SHADOWS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
-import { WORKSHEET_TEMPLATES } from '../../../data/worksheetTemplates';
+import {
+  getCurrentProfile,
+  listMyAssignments,
+  listMyMoodEntries,
+  listMyJournalEntries,
+  listMyNotifications,
+  listWorksheets,
+  listAffirmations,
+} from '../../../services/api';
 
 const MOOD_EMOJIS = {
   happy: '😊',
@@ -41,15 +48,12 @@ const MOOD_LABEL = {
   overwhelmed: 'Overwhelmed',
 };
 
-const AFFIRMATIONS = [
-  'You\'re doing better than you think.',
-  'Progress, not perfection.',
-  'Your feelings are valid.',
-  'One small step counts.',
-  'You are stronger than this moment.',
-];
-
-const STATUS_PROGRESS = { pending: 0, 'in-progress': 50, completed: 100 };
+const STATUS_PROGRESS = {
+  not_started: 0,
+  in_progress: 50,
+  completed: 100,
+  overdue: 0,
+};
 
 export default function TeenHomeTab() {
   const navigation = useNavigation();
@@ -57,6 +61,9 @@ export default function TeenHomeTab() {
   const [pending, setPending] = useState([]);
   const [recentMoods, setRecentMoods] = useState([]);
   const [journals, setJournals] = useState([]);
+  const [worksheetsById, setWorksheetsById] = useState({});
+  const [affirmations, setAffirmations] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(
@@ -65,21 +72,30 @@ export default function TeenHomeTab() {
       (async () => {
         try {
           setLoading(true);
-          await dataStore.initialize();
-          const u = await dataStore.getCurrentUser();
+          const [u, all, moods, j, ws, affs, notifs] = await Promise.all([
+            getCurrentProfile(),
+            listMyAssignments(),
+            listMyMoodEntries(),
+            listMyJournalEntries(),
+            listWorksheets(),
+            listAffirmations(),
+            listMyNotifications(),
+          ]);
           if (cancelled) return;
           setUser(u);
-          if (u) {
-            const [all, moods, j] = await Promise.all([
-              dataStore.getAssignmentsByClient(u.id),
-              dataStore.getMoodEntriesByUser(u.id),
-              dataStore.getJournalEntriesByUser(u.id),
-            ]);
-            if (cancelled) return;
-            setPending((all || []).filter((a) => a.status !== 'completed'));
-            setRecentMoods((moods || []).slice(0, 7));
-            setJournals(j || []);
-          }
+          setPending((all || []).filter((a) => a.status !== 'completed'));
+          setRecentMoods((moods || []).slice(0, 7));
+          setJournals(j || []);
+          const map = {};
+          (ws || []).forEach((w) => { map[w.id] = w; });
+          setWorksheetsById(map);
+          // Only show affirmations targeted at teens or everyone
+          setAffirmations(
+            (affs || []).filter(
+              (a) => a.audience === 'teen' || a.audience === 'all'
+            )
+          );
+          setUnreadCount((notifs || []).filter((n) => !n.readAt).length);
         } catch (e) {
           console.log('[Teen HomeTab] load error', e);
         } finally {
@@ -104,8 +120,11 @@ export default function TeenHomeTab() {
 
   const latestMood = recentMoods[0];
   const streak = recentMoods.length;
+  // Rotate through the real affirmation library by day-of-year.
   const todaysAffirmation =
-    AFFIRMATIONS[new Date().getDate() % AFFIRMATIONS.length];
+    affirmations.length > 0
+      ? affirmations[new Date().getDate() % affirmations.length]
+      : null;
 
   const firstName = (user?.name || 'Friend').split(' ')[0];
   const hour = new Date().getHours();
@@ -173,7 +192,7 @@ export default function TeenHomeTab() {
             onPress={() => navigation.navigate('Notifications')}
           >
             <Text style={styles.notifIcon}>🔔</Text>
-            <View style={styles.notifDot} />
+            {unreadCount > 0 && <View style={styles.notifDot} />}
           </TouchableOpacity>
         </View>
 
@@ -284,10 +303,10 @@ export default function TeenHomeTab() {
           </View>
         ) : (
           pending.slice(0, 2).map((a) => {
-            const w = WORKSHEET_TEMPLATES[a.worksheetId];
+            const w = worksheetsById[a.worksheetId];
             if (!w) return null;
-            const progress = STATUS_PROGRESS[a.status] ?? 0;
-            const cta = a.status === 'in-progress' ? 'Continue' : 'Start';
+            const progress = a.progress ?? STATUS_PROGRESS[a.status] ?? 0;
+            const cta = a.status === 'in_progress' ? 'Continue' : 'Start';
             return (
               <TouchableOpacity
                 key={a.id}
@@ -326,22 +345,24 @@ export default function TeenHomeTab() {
         )}
 
         {/* Today's Affirmation */}
-        <View style={styles.affirmationCard}>
-          <View style={styles.affirmationBadge}>
-            <Text style={styles.affirmationBadgeText}>DAILY AFFIRMATION</Text>
+        {todaysAffirmation && (
+          <View style={styles.affirmationCard}>
+            <View style={styles.affirmationBadge}>
+              <Text style={styles.affirmationBadgeText}>DAILY AFFIRMATION</Text>
+            </View>
+            <Text style={styles.affirmationText}>"{todaysAffirmation.text}"</Text>
+            <View style={styles.affirmationFooter}>
+              <Text style={styles.affirmationFooterText}>
+                Take a breath. Read it twice.
+              </Text>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('Affirmations')}
+              >
+                <Text style={styles.affirmationLink}>More →</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <Text style={styles.affirmationText}>"{todaysAffirmation}"</Text>
-          <View style={styles.affirmationFooter}>
-            <Text style={styles.affirmationFooterText}>
-              Take a breath. Read it twice.
-            </Text>
-            <TouchableOpacity
-              onPress={() => navigation.navigate('Affirmations')}
-            >
-              <Text style={styles.affirmationLink}>More →</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        )}
 
         <View style={{ height: SPACING.xl }} />
       </ScrollView>

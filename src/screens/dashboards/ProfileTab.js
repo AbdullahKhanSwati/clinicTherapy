@@ -1,10 +1,9 @@
-import React, { useState, useCallback } from 'react';
+import React from 'react';
 import { View, StyleSheet, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
-import { useAuth } from '../../../App';
+import { useAuth } from '../../contexts/AuthContext';
+import Avatar from '../../components/Avatar';
 import TabScreenHeader from '../../components/TabScreenHeader';
 
 const ACCESSORY_EMOJI = {
@@ -19,26 +18,8 @@ const ACCESSORY_EMOJI = {
 };
 
 export default function ProfileTab({ navigation }) {
-  const { signOut } = useAuth();
-  const [user, setUser] = useState(null);
-
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      (async () => {
-        try {
-          await dataStore.initialize();
-          const u = await dataStore.getCurrentUser();
-          if (!cancelled) setUser(u);
-        } catch (e) {
-          console.log('[ProfileTab] load error', e);
-        }
-      })();
-      return () => {
-        cancelled = true;
-      };
-    }, [])
-  );
+  // Live profile from AuthContext so avatar/color/accessory changes show instantly.
+  const { signOut, profile: user } = useAuth();
 
   const MENU = [
     { id: 'avatar', emoji: '🎨', label: 'Customize Avatar', screen: 'AvatarCustomizer' },
@@ -50,6 +31,8 @@ export default function ProfileTab({ navigation }) {
     { id: 'settings', emoji: '⚙️', label: 'Settings', screen: 'Settings' },
   ];
 
+  const profileColor = user?.profileColor || COLORS.primary;
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -59,21 +42,14 @@ export default function ProfileTab({ navigation }) {
             onPress={() => navigation.navigate('AvatarCustomizer')}
             activeOpacity={0.85}
           >
-            <View
-              style={[
-                styles.avatarRing,
-                { backgroundColor: user?.profileColor || COLORS.primary },
-              ]}
-            >
-              <View style={styles.avatarInner}>
-                {user?.avatar ? (
-                  <Text style={styles.avatarChar}>{user.avatar}</Text>
-                ) : (
-                  <Text style={styles.avatarText}>
-                    {(user?.name || 'U').charAt(0).toUpperCase()}
-                  </Text>
-                )}
-              </View>
+            <View style={[styles.avatarRing, { backgroundColor: profileColor }]}>
+              <Avatar
+                value={user?.avatar}
+                name={user?.name}
+                size={84}
+                backgroundColor={profileColor}
+                emojiSize={48}
+              />
               {user?.accessory && ACCESSORY_EMOJI[user.accessory] ? (
                 <Text style={styles.accessoryBadge}>
                   {ACCESSORY_EMOJI[user.accessory]}
@@ -83,6 +59,10 @@ export default function ProfileTab({ navigation }) {
           </TouchableOpacity>
           <Text style={styles.name}>{user?.name || 'Guest'}</Text>
           <Text style={styles.email}>{user?.email || ''}</Text>
+          <View style={styles.roleBadge}>
+            <View style={styles.roleDot} />
+            <Text style={styles.roleText}>Child Account</Text>
+          </View>
         </View>
 
         <View style={styles.menuCard}>
@@ -129,16 +109,6 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
     ...SHADOWS.md,
   },
-  avatarInner: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarChar: { fontSize: 48 },
-  avatarText: { fontSize: 32, fontWeight: '700', color: COLORS.primary },
   accessoryBadge: {
     position: 'absolute',
     top: -6,
@@ -151,7 +121,28 @@ const styles = StyleSheet.create({
     color: COLORS.gray700,
     marginBottom: 2,
   },
-  email: { fontSize: TYPOGRAPHY.sm, color: COLORS.gray500 },
+  email: { fontSize: TYPOGRAPHY.sm, color: COLORS.gray500, marginBottom: SPACING.sm },
+  roleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryLighter + '20',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: BORDER_RADIUS.full,
+  },
+  roleDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.primary,
+    marginRight: 6,
+  },
+  roleText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.primary,
+    letterSpacing: 0.4,
+  },
   menuCard: {
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.lg,

@@ -17,8 +17,18 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
-import { WORKSHEET_TEMPLATES } from '../../data/worksheetTemplates';
+import {
+  listWorksheets,
+  listAffirmations,
+  listCopingTools,
+  listResources,
+  listDateIdeas,
+  deleteWorksheet,
+  deleteAffirmation,
+  deleteCopingTool,
+  deleteResource,
+  deleteDateIdea,
+} from '../../services/api';
 
 const INK = '#1A2332';
 const ACCENT = COLORS.primary;
@@ -50,7 +60,7 @@ const CONFIG = {
     createScreen: 'CreateCopingTool',
     accent: '#15803D',
     primaryField: 'title',
-    secondaryField: 'type',
+    secondaryField: 'category',
     descriptionField: 'description',
     audienceField: 'audience',
   },
@@ -70,7 +80,7 @@ const CONFIG = {
     createScreen: 'CreateDateIdea',
     accent: '#9333EA',
     primaryField: 'title',
-    secondaryField: 'tag',
+    secondaryField: 'category',
     descriptionField: 'description',
   },
 };
@@ -96,43 +106,32 @@ export default function ManageContentScreen({ route, navigation }) {
   const loadItems = useCallback(async () => {
     try {
       setLoading(true);
-      await dataStore.initialize();
       let data = [];
       if (contentType === 'worksheet') {
-        const customWs = await dataStore.getCustomWorksheets();
-        data = [...Object.values(WORKSHEET_TEMPLATES), ...(customWs || [])];
-      } else if (contentType === 'affirmation') {
-        data = await dataStore.getAffirmations();
-      } else if (contentType === 'copingTool') {
-        data = await dataStore.getCopingTools();
-      } else if (contentType === 'resource') {
-        data = await dataStore.getResources();
-      } else if (contentType === 'dateIdea') {
-        data = await dataStore.getDateIdeas();
-      }
-
-      // Apply filters
-      let filtered = data || [];
-      if (audienceFilter) {
-        filtered = filtered.filter((item) => {
-          if (contentType === 'worksheet') {
-            return item.targetAudience === audienceFilter;
-          }
-          return (
-            item.audience === audienceFilter || item.audience === 'all'
-          );
+        data = await listWorksheets({
+          audience: audienceFilter || undefined,
+          programId: programFilter || undefined,
         });
-      }
-      if (programFilter) {
-        filtered = filtered.filter((item) => item.programId === programFilter);
+      } else if (contentType === 'affirmation') {
+        data = await listAffirmations(audienceFilter || undefined);
+      } else if (contentType === 'copingTool') {
+        data = await listCopingTools(audienceFilter || undefined);
+      } else if (contentType === 'resource') {
+        data = await listResources(audienceFilter || undefined);
+      } else if (contentType === 'dateIdea') {
+        data = await listDateIdeas();
       }
 
       // For Gottman, sort by week so they appear in program order
       if (programFilter === 'gottman_12week') {
-        filtered.sort((a, b) => (a.week || 0) - (b.week || 0));
+        (data || []).sort(
+          (a, b) =>
+            (a.content?.week || a.week || 0) -
+            (b.content?.week || b.week || 0)
+        );
       }
 
-      setItems(filtered);
+      setItems(data || []);
     } catch (e) {
       console.log('[ManageContent] load error', e);
     } finally {
@@ -147,15 +146,7 @@ export default function ManageContentScreen({ route, navigation }) {
   );
 
   const handleDelete = (item) => {
-    // Built-in templates (non-custom) can't be deleted
-    if (contentType === 'worksheet' && !item.id.startsWith('ws_custom')) {
-      Alert.alert(
-        'Cannot delete',
-        'Built-in worksheets are protected. Only custom worksheets you created can be deleted.'
-      );
-      return;
-    }
-    const labelValue = item[config.primaryField] || 'this item';
+    const labelValue = item[config.primaryField] || item.title || item.text || 'this item';
     Alert.alert(
       'Delete item?',
       `"${
@@ -169,20 +160,20 @@ export default function ManageContentScreen({ route, navigation }) {
           onPress: async () => {
             try {
               if (contentType === 'worksheet') {
-                await dataStore.deleteCustomWorksheet(item.id);
+                await deleteWorksheet(item.id);
               } else if (contentType === 'affirmation') {
-                await dataStore.deleteAffirmation(item.id);
+                await deleteAffirmation(item.id);
               } else if (contentType === 'copingTool') {
-                await dataStore.deleteCopingTool(item.id);
+                await deleteCopingTool(item.id);
               } else if (contentType === 'resource') {
-                await dataStore.deleteResource(item.id);
+                await deleteResource(item.id);
               } else if (contentType === 'dateIdea') {
-                await dataStore.deleteDateIdea(item.id);
+                await deleteDateIdea(item.id);
               }
               loadItems();
             } catch (e) {
               console.log('[ManageContent] delete error', e);
-              Alert.alert('Error', 'Failed to delete. Please try again.');
+              Alert.alert('Error', e?.message || 'Failed to delete. Please try again.');
             }
           },
         },
@@ -194,8 +185,8 @@ export default function ManageContentScreen({ route, navigation }) {
     navigation.navigate(config.createScreen);
   };
 
-  const isBuiltInWorksheet = (item) =>
-    contentType === 'worksheet' && !item.id.startsWith('ws_custom');
+  // All worksheets stored in the DB are now deletable; legacy "built-in protection" no longer applies.
+  const isBuiltInWorksheet = () => false;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>

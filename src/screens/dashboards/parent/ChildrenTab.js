@@ -16,7 +16,13 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
+import { useAuth } from '../../../contexts/AuthContext';
+import Avatar from '../../../components/Avatar';
+import {
+  getChildrenForParent,
+  listAssignmentsFor,
+  listMoodEntries,
+} from '../../../services/api';
 
 const INK = '#1A2332';
 const SAGE = '#15803D';
@@ -30,7 +36,7 @@ const MOOD_EMOJI = {
 
 export default function ParentChildrenTab() {
   const navigation = useNavigation();
-  const [user, setUser] = useState(null);
+  const { profile: user } = useAuth();
   const [enriched, setEnriched] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -38,22 +44,26 @@ export default function ParentChildrenTab() {
     useCallback(() => {
       let cancelled = false;
       (async () => {
+        if (!user?.id) {
+          setLoading(false);
+          return;
+        }
         try {
           setLoading(true);
-          await dataStore.initialize();
-          const u = await dataStore.getCurrentUser();
+          const kids = await getChildrenForParent(user.id);
           if (cancelled) return;
-          setUser(u);
 
-          if (u && Array.isArray(u.children) && u.children.length > 0) {
-            const list = await Promise.all(
-              u.children.map(async (id) => {
-                const child = await dataStore.getUserById(id);
-                if (!child) return null;
-                const [assignments, moods, completed] = await Promise.all([
-                  dataStore.getAssignmentsByClient(id),
-                  dataStore.getMoodEntriesByUser(id),
-                  dataStore.getCompletedWorksheetsByUser(id),
+          if (kids.length === 0) {
+            setEnriched([]);
+            return;
+          }
+
+          const list = await Promise.all(
+            kids.map(async (child) => {
+              try {
+                const [assignments, moods] = await Promise.all([
+                  listAssignmentsFor(child.id),
+                  listMoodEntries(child.id),
                 ]);
                 const completedCount = (assignments || []).filter(
                   (a) => a.status === 'completed'
@@ -63,7 +73,9 @@ export default function ParentChildrenTab() {
                   total > 0 ? Math.round((completedCount / total) * 100) : 0;
                 const hasOverdue = (assignments || []).some(
                   (a) =>
-                    a.status !== 'completed' && new Date(a.dueDate) < new Date()
+                    a.status !== 'completed' &&
+                    a.dueDate &&
+                    new Date(a.dueDate) < new Date()
                 );
                 return {
                   child,
@@ -73,13 +85,23 @@ export default function ParentChildrenTab() {
                   total,
                   completionPct,
                   hasOverdue,
-                  completedTotal: (completed || []).length,
                 };
-              })
-            );
-            if (cancelled) return;
-            setEnriched(list.filter(Boolean));
-          }
+              } catch (e) {
+                console.log('[Parent ChildrenTab] per-child error', child?.id, e);
+                return {
+                  child,
+                  latestMood: null,
+                  moodCount: 0,
+                  completedCount: 0,
+                  total: 0,
+                  completionPct: 0,
+                  hasOverdue: false,
+                };
+              }
+            })
+          );
+          if (cancelled) return;
+          setEnriched(list);
         } catch (e) {
           console.log('[Parent ChildrenTab] load error', e);
         } finally {
@@ -89,10 +111,15 @@ export default function ParentChildrenTab() {
       return () => {
         cancelled = true;
       };
-    }, [])
+    }, [user?.id])
   );
 
   const openDrawer = () => navigation.dispatch(DrawerActions.openDrawer());
+
+  const openChild = (childId) => {
+    const parent = navigation.getParent?.() || navigation;
+    parent.navigate('ChildDetail', { childId });
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -128,22 +155,18 @@ export default function ParentChildrenTab() {
             <TouchableOpacity
               key={c.child.id}
               style={styles.childCard}
-              onPress={() =>
-                navigation.navigate('ChildDetail', { childId: c.child.id })
-              }
+              onPress={() => openChild(c.child.id)}
               activeOpacity={0.9}
             >
               <View style={styles.childTop}>
-                <View
-                  style={[
-                    styles.avatar,
-                    { backgroundColor: c.child.profileColor || SAGE },
-                  ]}
-                >
-                  <Text style={styles.avatarEmoji}>
-                    {c.child.avatar || '👤'}
-                  </Text>
-                </View>
+                <Avatar
+                  value={c.child.avatar}
+                  name={c.child.name}
+                  size={52}
+                  backgroundColor={c.child.profileColor || SAGE}
+                  emojiSize={26}
+                  style={styles.avatarStyle}
+                />
                 <View style={{ flex: 1 }}>
                   <View style={styles.childNameRow}>
                     <Text style={styles.childName} numberOfLines={1}>
@@ -159,11 +182,11 @@ export default function ParentChildrenTab() {
                         {(c.child.role || '').toUpperCase()}
                       </Text>
                     </View>
-                    {c.child.age && (
+                    {c.child.age ? (
                       <Text style={styles.childAge}>· {c.child.age} yrs</Text>
-                    )}
+                    ) : null}
                   </View>
-                  {c.child.emotionalFocus && (
+                  {c.child.emotionalFocus && c.child.emotionalFocus.length > 0 && (
                     <Text style={styles.childFocus} numberOfLines={1}>
                       Focus: {c.child.emotionalFocus.join(', ')}
                     </Text>
@@ -324,15 +347,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.md,
   },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: SPACING.md,
-  },
-  avatarEmoji: { fontSize: 26 },
+  avatarStyle: { marginRight: SPACING.md },
   childNameRow: {
     flexDirection: 'row',
     alignItems: 'center',

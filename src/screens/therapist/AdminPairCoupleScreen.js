@@ -17,7 +17,11 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
+import {
+  listAllProfiles,
+  listCouplePairings,
+  createPairing,
+} from '../../services/api';
 
 const INK = '#1A2332';
 const BLUSH = '#D4536B';
@@ -39,12 +43,13 @@ export default function AdminPairCoupleScreen({ navigation }) {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      await dataStore.initialize();
-      const [allUsers, allPairings] = await Promise.all([
-        dataStore.getUsers(),
-        dataStore.getCouplePairings(),
+      const [allProfiles, allPairings] = await Promise.all([
+        listAllProfiles(),
+        listCouplePairings(),
       ]);
-      setUsers(allUsers || {});
+      const map = {};
+      (allProfiles || []).forEach((p) => { map[p.id] = p; });
+      setUsers(map);
       setPairings(allPairings || []);
     } catch (e) {
       console.log('[AdminPairCouple] load', e);
@@ -108,33 +113,28 @@ export default function AdminPairCoupleScreen({ navigation }) {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Pair them',
-          onPress: createPairing,
+          onPress: handleCreatePairing,
         },
       ]
     );
   };
 
-  const createPairing = async () => {
+  const handleCreatePairing = async () => {
     try {
-      const list = await dataStore.getCouplePairings();
-      const now = new Date().toISOString();
-      const newPairing = {
-        id: `cp_${Date.now().toString(36)}`,
+      await createPairing({
         partnerAId: selectedA.id,
         partnerBId: selectedB.id,
-        inviteCode: null,
-        status: 'active',
-        createdAt: now,
-        pairedAt: now,
-        createdBy: 'admin',
-      };
-      await dataStore.setCouplePairings([...(list || []), newPairing]);
+      });
       reset();
       await load();
       Alert.alert('Pairing created', 'The couple has been linked.');
     } catch (e) {
       console.log('[AdminPairCouple] create', e);
-      Alert.alert('Error', 'Could not create the pairing.');
+      Alert.alert(
+        'Error',
+        e?.message ||
+          'Could not create the pairing. Make sure you are signed in as an admin/therapist.'
+      );
     }
   };
 

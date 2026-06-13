@@ -5,6 +5,7 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -15,8 +16,17 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
-import { WORKSHEET_TEMPLATES } from '../../data/worksheetTemplates';
+import {
+  listAffirmations,
+  listCopingTools,
+  listResources,
+  listDateIdeas,
+  listWorksheets,
+  listCouplePairings,
+  listPartnerCheckins,
+  listRepairRequests,
+  listSharedGoals,
+} from '../../services/api';
 
 const INK = '#1A2332';
 
@@ -218,13 +228,14 @@ export default function ModuleHubScreen({ route, navigation }) {
     openRepairs: 0,
     sharedGoals: 0,
   });
+  const [loading, setLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
         try {
-          await dataStore.initialize();
+          setLoading(true);
           const [
             affirmations,
             copingTools,
@@ -236,36 +247,31 @@ export default function ModuleHubScreen({ route, navigation }) {
             repairs,
             goals,
           ] = await Promise.all([
-            dataStore.getAffirmations(),
-            dataStore.getCopingTools(),
-            dataStore.getResources(),
-            dataStore.getDateIdeas(),
-            dataStore.getCustomWorksheets(),
-            dataStore.getCouplePairings(),
-            dataStore.getPartnerCheckins(),
-            dataStore.getRepairRequests(),
-            dataStore.getSharedGoals(),
+            listAffirmations(),
+            listCopingTools(),
+            listResources(),
+            listDateIdeas(),
+            listWorksheets(),
+            listCouplePairings(),
+            listPartnerCheckins(),
+            listRepairRequests(),
+            listSharedGoals(),
           ]);
           if (cancelled) return;
 
-          const allWorksheets = [
-            ...Object.values(WORKSHEET_TEMPLATES),
-            ...(customWorksheets || []),
-          ];
+          const allWorksheets = customWorksheets || [];
 
+          // Unified rule used for every content type: an item belongs to a
+          // module if its audience strictly equals that module's audience.
+          // The "General Library" module (audience === 'all') is the only
+          // place where 'all'-tagged content surfaces.
           const matchesAudience = (item) => {
+            const a = item.audience || item.targetAudience;
             if (config.audience === 'all') return true;
-            return (
-              item.audience === config.audience ||
-              item.targetAudience === config.audience ||
-              item.audience === 'all'
-            );
+            return a === config.audience;
           };
 
-          const filteredWorksheets = allWorksheets.filter((w) => {
-            if (config.audience === 'all') return true;
-            return w.targetAudience === config.audience;
-          });
+          const filteredWorksheets = allWorksheets.filter(matchesAudience);
 
           const gottmanCount = filteredWorksheets.filter(
             (w) => w.programId === 'gottman_12week'
@@ -300,6 +306,8 @@ export default function ModuleHubScreen({ route, navigation }) {
           }
         } catch (e) {
           console.log('[ModuleHub] load error', e);
+        } finally {
+          if (!cancelled) setLoading(false);
         }
       })();
       return () => {
@@ -395,6 +403,12 @@ export default function ModuleHubScreen({ route, navigation }) {
             </View>
           )}
         </View>
+
+        {loading && (
+          <View style={{ paddingVertical: SPACING.lg, alignItems: 'center' }}>
+            <ActivityIndicator color={INK} />
+          </View>
+        )}
 
         <Text style={styles.sectionLabel}>CORE CONTENT</Text>
         {CONTENT_CARDS.map((card) => {

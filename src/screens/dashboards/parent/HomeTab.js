@@ -15,7 +15,13 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
+import { useAuth } from '../../../contexts/AuthContext';
+import Avatar from '../../../components/Avatar';
+import {
+  getChildrenForParent,
+  listMoodEntries,
+  listNotesForParentChildren,
+} from '../../../services/api';
 
 const INK = '#1A2332';
 const SAGE = '#15803D';
@@ -36,7 +42,7 @@ const PARENTING_TIPS = [
 
 export default function ParentHomeTab() {
   const navigation = useNavigation();
-  const [user, setUser] = useState(null);
+  const { profile: user } = useAuth();
   const [children, setChildren] = useState([]);
   const [therapistNotes, setTherapistNotes] = useState([]);
   const [recentMoods, setRecentMoods] = useState({});
@@ -45,39 +51,37 @@ export default function ParentHomeTab() {
     useCallback(() => {
       let cancelled = false;
       (async () => {
+        if (!user?.id) return;
         try {
-          await dataStore.initialize();
-          const u = await dataStore.getCurrentUser();
+          const kids = await getChildrenForParent(user.id);
           if (cancelled) return;
-          setUser(u);
+          setChildren(kids || []);
 
-          if (u && Array.isArray(u.children) && u.children.length > 0) {
-            const kidsRaw = await Promise.all(
-              u.children.map((id) => dataStore.getUserById(id))
-            );
-            const kids = kidsRaw.filter(Boolean);
-            if (cancelled) return;
-            setChildren(kids);
-
-            // Latest mood per child
-            const moods = {};
-            await Promise.all(
-              kids.map(async (k) => {
-                const list = await dataStore.getMoodEntriesByUser(k.id);
-                moods[k.id] = (list || [])[0] || null;
-              })
-            );
-            if (cancelled) return;
-            setRecentMoods(moods);
-
-            // Therapist notes shared with parent (we'll show notes about their kids)
-            const allNotes = await dataStore.getTherapistNotes();
-            const myNotes = (allNotes || []).filter((n) =>
-              u.children.includes(n.clientId)
-            );
-            if (cancelled) return;
-            setTherapistNotes(myNotes.slice(0, 3));
+          if ((kids || []).length === 0) {
+            setRecentMoods({});
+            setTherapistNotes([]);
+            return;
           }
+
+          // Latest mood per child + non-private therapist notes about kids
+          const [perChildMoods, notes] = await Promise.all([
+            Promise.all(
+              kids.map(async (k) => {
+                const list = await listMoodEntries(k.id);
+                return [k.id, (list || [])[0] || null];
+              })
+            ),
+            listNotesForParentChildren(user.id),
+          ]);
+          if (cancelled) return;
+
+          const moodsMap = {};
+          perChildMoods.forEach(([id, mood]) => { moodsMap[id] = mood; });
+          setRecentMoods(moodsMap);
+
+          // Parent should only see non-private notes
+          const visible = (notes || []).filter((n) => !n.isPrivate);
+          setTherapistNotes(visible.slice(0, 3));
         } catch (e) {
           console.log('[Parent HomeTab] load error', e);
         }
@@ -85,10 +89,21 @@ export default function ParentHomeTab() {
       return () => {
         cancelled = true;
       };
-    }, [])
+    }, [user?.id])
   );
 
   const openDrawer = () => navigation.dispatch(DrawerActions.openDrawer());
+
+  const goToTab = (tabName) => {
+    // Children/Insights/Profile are sibling tabs — bubble up to the tab nav.
+    const parent = navigation.getParent?.() || navigation;
+    parent.navigate(tabName);
+  };
+
+  const openChild = (childId) => {
+    const parent = navigation.getParent?.() || navigation;
+    parent.navigate('ChildDetail', { childId });
+  };
 
   const userName = (user?.name || 'Parent').split(' ')[0];
   const hour = new Date().getHours();
@@ -135,7 +150,7 @@ export default function ParentHomeTab() {
               ? 'Your therapist will link your children soon.'
               : `Stay connected with ${
                   children.length === 1
-                    ? children[0]?.name?.split(' ')[0]
+                    ? (children[0]?.name?.split(' ')[0] || 'your child')
                     : 'your kids'
                 } and their progress.`}
           </Text>
@@ -146,7 +161,7 @@ export default function ParentHomeTab() {
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionLabel}>TODAY'S PULSE</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('Children')}>
+              <TouchableOpacity onPress={() => goToTab('Children')}>
                 <Text style={styles.sectionAction}>See all</Text>
               </TouchableOpacity>
             </View>
@@ -159,20 +174,16 @@ export default function ParentHomeTab() {
                     key={c.id}
                     style={styles.moodTile}
                     activeOpacity={0.85}
-                    onPress={() =>
-                      navigation.navigate('ChildDetail', { childId: c.id })
-                    }
+                    onPress={() => openChild(c.id)}
                   >
-                    <View
-                      style={[
-                        styles.moodAvatar,
-                        { backgroundColor: c.profileColor || SAGE },
-                      ]}
-                    >
-                      <Text style={styles.moodAvatarText}>
-                        {c.avatar || '👤'}
-                      </Text>
-                    </View>
+                    <Avatar
+                      value={c.avatar}
+                      name={c.name}
+                      size={48}
+                      backgroundColor={c.profileColor || SAGE}
+                      emojiSize={24}
+                      style={styles.moodAvatarStyle}
+                    />
                     <Text style={styles.moodName} numberOfLines={1}>
                       {c.name?.split(' ')[0]}
                     </Text>
@@ -204,19 +215,19 @@ export default function ParentHomeTab() {
             icon="users"
             label="Children"
             sub="Their progress"
-            onPress={() => navigation.navigate('Children')}
+            onPress={() => goToTab('Children')}
           />
           <ActionCard
             icon="bar-chart-2"
             label="Insights"
             sub="Family trends"
-            onPress={() => navigation.navigate('Insights')}
+            onPress={() => goToTab('Insights')}
           />
           <ActionCard
             icon="message-square"
             label="Notes"
             sub="From therapist"
-            onPress={() => navigation.navigate('Children')}
+            onPress={() => goToTab('Children')}
           />
         </View>
 
@@ -227,7 +238,12 @@ export default function ParentHomeTab() {
             {therapistNotes.map((note) => {
               const child = children.find((k) => k.id === note.clientId);
               return (
-                <View key={note.id} style={styles.noteCard}>
+                <TouchableOpacity
+                  key={note.id}
+                  style={styles.noteCard}
+                  onPress={() => child && openChild(child.id)}
+                  activeOpacity={0.85}
+                >
                   <View style={styles.noteHeader}>
                     <Text style={styles.noteAuthor}>
                       About {child?.name?.split(' ')[0] || 'your child'}
@@ -237,15 +253,15 @@ export default function ParentHomeTab() {
                     </Text>
                   </View>
                   <Text style={styles.noteContent} numberOfLines={3}>
-                    {note.content}
+                    {note.body || note.content}
                   </Text>
                   <Text style={styles.noteDate}>
-                    {new Date(note.date).toLocaleDateString('en-US', {
+                    {new Date(note.createdAt).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
                     })}
                   </Text>
-                </View>
+                </TouchableOpacity>
               );
             })}
           </>
@@ -394,15 +410,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.gray100,
   },
-  moodAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  moodAvatarText: { fontSize: 24 },
+  moodAvatarStyle: { marginBottom: SPACING.sm },
   moodName: {
     fontSize: 14,
     fontWeight: '800',

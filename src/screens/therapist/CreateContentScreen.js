@@ -11,7 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import {
   COLORS,
@@ -19,7 +19,13 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
+import {
+  getCurrentUserId,
+  createAffirmation,
+  createCopingTool,
+  createResource,
+  createDateIdea,
+} from '../../services/api';
 
 const INK = '#1A2332';
 const ACCENT = COLORS.primary;
@@ -252,6 +258,7 @@ export default function CreateContentScreen({ route, navigation }) {
     return initial;
   });
   const [submitting, setSubmitting] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const setField = (key, val) =>
     setValues((prev) => ({ ...prev, [key]: val }));
@@ -264,24 +271,59 @@ export default function CreateContentScreen({ route, navigation }) {
     if (!isValid || submitting) return;
     try {
       setSubmitting(true);
-      const therapist = await dataStore.getCurrentUser();
+      const createdBy = await getCurrentUserId();
 
-      // Build the payload from form values + therapist
-      const payload = {
-        ...values,
-        createdBy: therapist?.id || 'therapist1',
-      };
-
-      const fn = dataStore[config.saveFn];
-      if (typeof fn !== 'function') throw new Error('Save function missing');
-      await fn.call(dataStore, payload);
+      if (contentType === 'affirmation') {
+        await createAffirmation({
+          text: values.text,
+          audience: values.audience || 'all',
+          accent: null,
+          category: values.category || null,
+          createdBy,
+        });
+      } else if (contentType === 'copingTool') {
+        const steps = String(values.instructions || '')
+          .split(/\n+/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((text, i) => ({ step: i + 1, text }));
+        await createCopingTool({
+          title: values.title,
+          category: values.type,
+          description: values.description,
+          steps,
+          duration: values.duration || null,
+          audience: values.audience || 'all',
+          createdBy,
+        });
+      } else if (contentType === 'resource') {
+        await createResource({
+          title: values.title,
+          type: values.type,
+          url: values.url || null,
+          description: values.description,
+          content: values.content || null,
+          category: values.category || null,
+          audience: values.audience || 'all',
+          createdBy,
+        });
+      } else if (contentType === 'dateIdea') {
+        await createDateIdea({
+          title: values.title,
+          description: values.description,
+          category: values.tag,
+          createdBy,
+        });
+      } else {
+        throw new Error(`Unknown content type: ${contentType}`);
+      }
 
       Alert.alert('Saved', `Your ${config.title.toLowerCase()} has been added.`, [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
     } catch (e) {
       console.log('[CreateContent] save error', e);
-      Alert.alert('Error', 'Failed to save. Please try again.');
+      Alert.alert('Error', e?.message || 'Failed to save. Please try again.');
       setSubmitting(false);
     }
   };
@@ -373,7 +415,7 @@ export default function CreateContentScreen({ route, navigation }) {
           <View style={{ height: SPACING.xl }} />
         </ScrollView>
 
-        <View style={styles.submitBar}>
+        <View style={[styles.submitBar, { paddingBottom: insets.bottom + SPACING.md }]}>
           <TouchableOpacity
             style={[
               styles.submitBtn,

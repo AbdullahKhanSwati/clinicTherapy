@@ -17,7 +17,12 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
+import {
+  listAllProfiles,
+  listAssignments,
+  listAllMoodEntries,
+} from '../../../services/api';
+import Avatar from '../../../components/Avatar';
 
 const INK = '#1A2332';
 const ACCENT = COLORS.primary;
@@ -29,14 +34,14 @@ const ROLE_FILTERS = [
   { id: 'child', label: 'Children' },
   { id: 'teen', label: 'Teens' },
   { id: 'couples', label: 'Couples' },
-  { id: 'family', label: 'Family' },
+  { id: 'family', label: 'Parents' },
 ];
 
 const ROLE_BADGE = {
   child: { label: 'CHILD', color: '#9333EA' },
   teen: { label: 'TEEN', color: '#0891B2' },
   couples: { label: 'COUPLES', color: '#D4536B' },
-  family: { label: 'FAMILY', color: '#15803D' },
+  family: { label: 'PARENT', color: '#15803D' },
 };
 
 export default function TherapistClientsTab() {
@@ -54,19 +59,13 @@ export default function TherapistClientsTab() {
       (async () => {
         try {
           setLoading(true);
-          await dataStore.initialize();
-          const allUsers = await dataStore.getUsers();
-          if (cancelled) return;
-          const clientList = Object.values(allUsers || {}).filter(
-            (x) => x.role !== 'therapist'
-          );
-          setClients(clientList);
-
-          const [a, m] = await Promise.all([
-            dataStore.getWorksheetAssignments(),
-            dataStore.getMoodEntries(),
+          const [allUsers, a, m] = await Promise.all([
+            listAllProfiles(),
+            listAssignments(),
+            listAllMoodEntries(),
           ]);
           if (cancelled) return;
+          setClients((allUsers || []).filter((x) => x.role !== 'therapist' && x.role !== 'admin'));
           setAssignments(a || []);
           setMoods(m || []);
         } catch (e) {
@@ -89,7 +88,7 @@ export default function TherapistClientsTab() {
 
   const enriched = useMemo(() => {
     return clients.map((c) => {
-      const clientAssignments = assignments.filter((a) => a.clientId === c.id);
+      const clientAssignments = assignments.filter((a) => a.assigneeId === c.id);
       const completed = clientAssignments.filter(
         (a) => a.status === 'completed'
       ).length;
@@ -99,7 +98,7 @@ export default function TherapistClientsTab() {
         .filter((m) => m.userId === c.id)
         .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
       const hasOverdue = clientAssignments.some(
-        (a) => a.status !== 'completed' && new Date(a.dueDate) < new Date()
+        (a) => a.status !== 'completed' && a.dueDate && new Date(a.dueDate) < new Date()
       );
       return {
         ...c,
@@ -222,7 +221,7 @@ export default function TherapistClientsTab() {
         ) : (
           filtered.map((c) => {
             const badge = ROLE_BADGE[c.role] || {
-              label: c.role.toUpperCase(),
+              label: (c.role || 'USER').toUpperCase(),
               color: COLORS.gray500,
             };
             return (
@@ -233,14 +232,13 @@ export default function TherapistClientsTab() {
                 activeOpacity={0.9}
               >
                 <View style={styles.clientTopRow}>
-                  <View
-                    style={[
-                      styles.clientAvatar,
-                      { backgroundColor: c.profileColor || ACCENT },
-                    ]}
-                  >
-                    <Text style={styles.clientAvatarText}>{c.avatar || '👤'}</Text>
-                  </View>
+                  <Avatar
+                    value={c.avatar}
+                    name={c.name}
+                    size={48}
+                    backgroundColor={c.profileColor || ACCENT}
+                    style={{ marginRight: SPACING.md }}
+                  />
                   <View style={{ flex: 1 }}>
                     <View style={styles.clientNameRow}>
                       <Text style={styles.clientName} numberOfLines={1}>

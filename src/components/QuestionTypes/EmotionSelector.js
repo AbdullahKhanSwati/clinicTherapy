@@ -58,7 +58,11 @@ export default function EmotionSelector({ question, value, onChange, onNext }) {
           >
             <Text style={styles.emotionEmoji}>{EMOTION_EMOJIS[emotion] || '😐'}</Text>
             <Text style={styles.emotionLabel}>{emotion.charAt(0).toUpperCase() + emotion.slice(1)}</Text>
-            {selected === emotion && <View style={styles.checkmark}>✓</View>}
+            {selected === emotion && (
+              <View style={styles.checkmark}>
+                <Text style={styles.checkmarkText}>✓</Text>
+              </View>
+            )}
           </TouchableOpacity>
         ))}
       </View>
@@ -111,6 +115,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: SPACING.sm,
     right: SPACING.sm,
+  },
+  checkmarkText: {
     fontSize: TYPOGRAPHY.base,
     color: COLORS.primary,
     fontWeight: 'bold',

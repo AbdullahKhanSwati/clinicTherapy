@@ -1,9 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
-import { useAuth } from '../../../App';
+import { useAuth } from '../../contexts/AuthContext';
+import Avatar from '../../components/Avatar';
+
+const ACCESSORY_EMOJI = {
+  none: '',
+  crown: '👑',
+  star: '⭐',
+  sparkles: '✨',
+  flower: '🌸',
+  heart: '💖',
+  hat: '🎩',
+  rainbow: '🌈',
+};
 
 const ITEMS = [
   { id: 'home', emoji: '🏠', label: 'Home', tab: 'Home' },
@@ -12,38 +23,31 @@ const ITEMS = [
   { id: 'profile', emoji: '👤', label: 'Profile', tab: 'Profile' },
 ];
 
+// Drawer items now route via the tab navigator: drawer → DashboardTabs →
+// <tab> → <inner stack screen>. That way the screens registered inside the
+// per-tab stacks are reachable from the drawer.
 const SHORTCUTS = [
-  { id: 'toolbox', emoji: '🧰', label: 'Coping Toolbox', screen: 'CopingToolbox' },
-  { id: 'avatar', emoji: '🎨', label: 'My Avatar', screen: 'AvatarCustomizer' },
-  { id: 'progress', emoji: '📊', label: 'Progress', screen: 'Progress' },
-  { id: 'journal', emoji: '📔', label: 'Journal', screen: 'Journal' },
-  { id: 'settings', emoji: '⚙️', label: 'Settings', screen: 'Settings' },
+  { id: 'toolbox',  emoji: '🧰', label: 'Coping Toolbox', tab: 'Profile', screen: 'CopingToolbox' },
+  { id: 'avatar',   emoji: '🎨', label: 'My Avatar',      tab: 'Profile', screen: 'AvatarCustomizer' },
+  { id: 'progress', emoji: '📊', label: 'Progress',       tab: 'Profile', screen: 'Progress' },
+  { id: 'journal',  emoji: '📔', label: 'Journal',        tab: 'Profile', screen: 'Journal' },
+  { id: 'settings', emoji: '⚙️', label: 'Settings',       tab: 'Profile', screen: 'Settings' },
 ];
 
 export default function DrawerContent({ navigation }) {
-  const { signOut } = useAuth();
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        await dataStore.initialize();
-        const u = await dataStore.getCurrentUser();
-        setUser(u);
-      } catch (e) {
-        console.log('[DrawerContent] load error', e);
-      }
-    })();
-  }, []);
+  // Live profile from AuthContext — updates when avatar/color/accessory change.
+  const { signOut, profile: user } = useAuth();
 
   const goToTab = (tabName) => {
     navigation.navigate('DashboardTabs', { screen: tabName });
     navigation.closeDrawer?.();
   };
 
-  const goToScreen = (screenName) => {
-    const parent = navigation.getParent?.();
-    (parent || navigation).navigate(screenName);
+  const goToTabbedScreen = (tabName, screenName) => {
+    navigation.navigate('DashboardTabs', {
+      screen: tabName,
+      params: { screen: screenName },
+    });
     navigation.closeDrawer?.();
   };
 
@@ -51,13 +55,26 @@ export default function DrawerContent({ navigation }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.profileBlock}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {(user?.name || 'U').charAt(0).toUpperCase()}
-            </Text>
+          <View style={styles.avatarWrap}>
+            <Avatar
+              value={user?.avatar}
+              name={user?.name}
+              size={64}
+              backgroundColor={user?.profileColor || COLORS.primary}
+              style={SHADOWS.md}
+            />
+            {user?.accessory && ACCESSORY_EMOJI[user.accessory] ? (
+              <Text style={styles.accessoryBadge}>
+                {ACCESSORY_EMOJI[user.accessory]}
+              </Text>
+            ) : null}
           </View>
           <Text style={styles.name}>{user?.name || 'Guest'}</Text>
-          <Text style={styles.role}>{user?.role || 'child'}</Text>
+          <Text style={styles.email}>{user?.email || ''}</Text>
+          <View style={styles.roleBadge}>
+            <View style={styles.roleDot} />
+            <Text style={styles.roleText}>Child Account</Text>
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -72,7 +89,11 @@ export default function DrawerContent({ navigation }) {
         <Text style={styles.sectionLabel}>Shortcuts</Text>
         <View style={styles.section}>
           {SHORTCUTS.map((it) => (
-            <TouchableOpacity key={it.id} style={styles.item} onPress={() => goToScreen(it.screen)}>
+            <TouchableOpacity
+              key={it.id}
+              style={styles.item}
+              onPress={() => goToTabbedScreen(it.tab, it.screen)}
+            >
               <Text style={styles.itemEmoji}>{it.emoji}</Text>
               <Text style={styles.itemLabel}>{it.label}</Text>
             </TouchableOpacity>
@@ -97,23 +118,43 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.gray100,
     marginBottom: SPACING.lg,
   },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
+  avatarWrap: {
+    position: 'relative',
     marginBottom: SPACING.md,
-    ...SHADOWS.md,
   },
-  avatarText: { fontSize: 26, fontWeight: '700', color: COLORS.white },
+  accessoryBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -4,
+    fontSize: 22,
+  },
   name: { fontSize: TYPOGRAPHY.lg, fontWeight: '700', color: COLORS.gray700 },
-  role: {
+  email: {
     fontSize: TYPOGRAPHY.xs,
     color: COLORS.gray500,
     marginTop: 2,
-    textTransform: 'capitalize',
+    marginBottom: SPACING.sm,
+  },
+  roleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryLighter + '20',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: BORDER_RADIUS.full,
+  },
+  roleDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.primary,
+    marginRight: 6,
+  },
+  roleText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.primary,
+    letterSpacing: 0.4,
   },
   sectionLabel: {
     fontSize: TYPOGRAPHY.xs,

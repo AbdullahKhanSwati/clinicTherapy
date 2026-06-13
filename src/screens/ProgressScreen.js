@@ -8,10 +8,17 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import useSafeGoBack from '../hooks/useSafeGoBack';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
-import dataStore from '../utils/dataStore';
+import {
+  getCurrentProfile,
+  listMyAssignments,
+  listResponsesFor,
+  listMyMoodEntries,
+} from '../services/api';
 
 export default function ProgressScreen({ navigation }) {
+  const goBack = useSafeGoBack();
   const [currentUser, setCurrentUser] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [completed, setCompleted] = useState([]);
@@ -22,23 +29,31 @@ export default function ProgressScreen({ navigation }) {
     const loadData = async () => {
       try {
         setLoading(true);
-        await dataStore.initialize();
-
-        const user = await dataStore.getCurrentUser();
+        const user = await getCurrentProfile();
         setCurrentUser(user);
 
         if (user) {
-          const assigns = await dataStore.getAssignmentsByClient(user.id);
-          setAssignments(assigns);
-
-          const completed_ws = await dataStore.getCompletedWorksheetsByUser(user.id);
-          setCompleted(completed_ws);
-
-          const moods = await dataStore.getMoodEntriesByUser(user.id);
-          setMoodEntries(moods);
+          const [assigns, moods, responses] = await Promise.all([
+            listMyAssignments(),
+            listMyMoodEntries(),
+            listResponsesFor(user.id),
+          ]);
+          setAssignments(assigns || []);
+          setMoodEntries(moods || []);
+          // Completed = responses with completedAt → reshape for downstream UI
+          setCompleted(
+            (responses || [])
+              .filter((r) => r.completedAt)
+              .map((r) => ({
+                id: r.id,
+                userId: r.userId,
+                assignmentId: r.assignmentId,
+                completedDate: r.completedAt,
+              }))
+          );
         }
       } catch (error) {
-        console.error('[v0] Error loading progress:', error);
+        console.error('[Progress] load error', error);
       } finally {
         setLoading(false);
       }
@@ -61,19 +76,29 @@ export default function ProgressScreen({ navigation }) {
     ? Math.round((completed.length / assignments.length) * 100)
     : 0;
 
-  const avgMood = moodEntries.length > 0
+  // Filter out entries with missing/invalid intensity so min/max don't return NaN.
+  const validMoods = moodEntries.filter(
+    (e) => typeof e.intensity === 'number' && !Number.isNaN(e.intensity)
+  );
+  const avgMood = validMoods.length > 0
     ? Math.round(
-        moodEntries.reduce((sum, entry) => sum + entry.intensity, 0) / moodEntries.length
+        validMoods.reduce((sum, entry) => sum + entry.intensity, 0) / validMoods.length
       )
-    : 5;
+    : 0;
+  const highestMood = validMoods.length > 0
+    ? Math.max(...validMoods.map((e) => e.intensity))
+    : 0;
+  const lowestMood = validMoods.length > 0
+    ? Math.min(...validMoods.map((e) => e.intensity))
+    : 0;
 
-  const moodTrend = moodEntries.slice(0, 7).reverse();
+  const moodTrend = validMoods.slice(0, 7).reverse();
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => goBack()}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Your Progress</Text>
@@ -135,15 +160,11 @@ export default function ProgressScreen({ navigation }) {
                 </View>
                 <View style={styles.trendStat}>
                   <Text style={styles.trendLabel}>Highest</Text>
-                  <Text style={styles.trendValue}>
-                    {Math.max(...moodEntries.map(e => e.intensity))}/10
-                  </Text>
+                  <Text style={styles.trendValue}>{highestMood}/10</Text>
                 </View>
                 <View style={styles.trendStat}>
                   <Text style={styles.trendLabel}>Lowest</Text>
-                  <Text style={styles.trendValue}>
-                    {Math.min(...moodEntries.map(e => e.intensity))}/10
-                  </Text>
+                  <Text style={styles.trendValue}>{lowestMood}/10</Text>
                 </View>
               </View>
             </>

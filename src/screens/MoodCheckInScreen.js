@@ -10,8 +10,9 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import useSafeGoBack from '../hooks/useSafeGoBack';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
-import dataStore from '../utils/dataStore';
+import { getCurrentUserId, createMoodEntry } from '../services/api';
 
 const MOODS = [
   { id: 'happy', emoji: '😊', label: 'Happy', color: '#FFD700' },
@@ -25,6 +26,7 @@ const MOODS = [
 ];
 
 export default function MoodCheckInScreen({ navigation }) {
+  const goBack = useSafeGoBack();
   const [selectedMood, setSelectedMood] = useState(null);
   const [intensity, setIntensity] = useState(5);
   const [notes, setNotes] = useState('');
@@ -39,25 +41,24 @@ export default function MoodCheckInScreen({ navigation }) {
 
     try {
       setIsSubmitting(true);
-      const currentUser = await dataStore.getCurrentUser();
+      const userId = await getCurrentUserId();
+      if (!userId) throw new Error('You are not signed in.');
 
-      if (currentUser) {
-        await dataStore.addMoodEntry(
-          currentUser.id,
-          selectedMood,
-          intensity,
-          notes,
-        );
-      }
+      await createMoodEntry({
+        userId,
+        mood: selectedMood,
+        score: intensity,
+        note: notes,
+      });
 
       setCompletionVisible(true);
       setTimeout(() => {
         setCompletionVisible(false);
-        navigation.goBack();
+        goBack();
       }, 2000);
     } catch (error) {
-      console.error('[v0] Error saving mood:', error);
-      Alert.alert('Error', 'Failed to save mood check-in');
+      console.error('[MoodCheckIn] save error', error);
+      Alert.alert('Error', error?.message || 'Failed to save mood check-in');
     } finally {
       setIsSubmitting(false);
     }
@@ -67,7 +68,7 @@ export default function MoodCheckInScreen({ navigation }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => goBack()}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Mood Check-In</Text>

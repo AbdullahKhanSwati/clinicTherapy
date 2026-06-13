@@ -8,41 +8,42 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import useSafeGoBack from '../hooks/useSafeGoBack';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
-import dataStore from '../utils/dataStore';
+import {
+  listMyMoodEntries,
+  listMyJournalEntries,
+  listMyAssignments,
+  listMyBadges,
+} from '../services/api';
 
-const ALL_BADGES = [
+// Catalog of award-able badges. Each badge has a `compute(stats)` that returns
+// the user's current progress (a number). When that meets/exceeds `requirement`
+// the badge is considered earned. Stats come from the live DB.
+const BADGE_CATALOG = [
   {
     id: 'first_step',
     name: 'First Step',
     description: 'Complete your first worksheet',
     icon: '👣',
     requirement: 1,
-    progress: 1,
+    compute: (s) => s.completedCount,
   },
   {
     id: 'consistent',
     name: 'Consistent',
-    description: 'Complete worksheets for 7 days in a row',
+    description: 'Complete 7 worksheets',
     icon: '🔥',
     requirement: 7,
-    progress: 5,
-  },
-  {
-    id: 'explorer',
-    name: 'Explorer',
-    description: 'Try 5 different types of worksheets',
-    icon: '🗺️',
-    requirement: 5,
-    progress: 3,
+    compute: (s) => s.completedCount,
   },
   {
     id: 'mood_master',
     name: 'Mood Master',
-    description: 'Record mood check-ins for 14 days',
+    description: 'Record 14 mood check-ins',
     icon: '📊',
     requirement: 14,
-    progress: 8,
+    compute: (s) => s.moodCount,
   },
   {
     id: 'journal_hero',
@@ -50,51 +51,57 @@ const ALL_BADGES = [
     description: 'Write 10 journal entries',
     icon: '📔',
     requirement: 10,
-    progress: 4,
+    compute: (s) => s.journalCount,
   },
   {
     id: 'insight_seeker',
     name: 'Insight Seeker',
-    description: 'Complete all reflection questions in 5 worksheets',
+    description: 'Complete 5 different worksheets',
     icon: '💡',
     requirement: 5,
-    progress: 2,
+    compute: (s) => s.completedDistinct,
   },
   {
-    id: 'social_butterfly',
-    name: 'Social Butterfly',
-    description: 'Share your progress 3 times',
-    icon: '🦋',
+    id: 'mood_streak_3',
+    name: 'On a Roll',
+    description: '3 mood check-ins in a row',
+    icon: '⚡',
     requirement: 3,
-    progress: 1,
+    compute: (s) => s.moodStreak,
   },
   {
-    id: 'mindfulness_guru',
-    name: 'Mindfulness Guru',
-    description: 'Complete all mindfulness worksheets',
-    icon: '🧘',
-    requirement: 5,
-    progress: 2,
-  },
-  {
-    id: 'resilience',
-    name: 'Resilience',
-    description: 'Continue after 3 missed days',
-    icon: '💪',
-    requirement: 1,
-    progress: 0,
-  },
-  {
-    id: 'month_streak',
-    name: 'Month Streak',
-    description: '30 consecutive days of activity',
+    id: 'month_active',
+    name: 'Month Active',
+    description: 'Any activity on 30 distinct days',
     icon: '⭐',
     requirement: 30,
-    progress: 12,
+    compute: (s) => s.activeDays,
   },
 ];
 
+const distinctDays = (rows) => {
+  const days = new Set();
+  rows.forEach((r) => {
+    const d = r.date || r.createdAt;
+    if (!d) return;
+    days.add(new Date(d).toDateString());
+  });
+  return days.size;
+};
+
+const computeMoodStreak = (moods) => {
+  const days = new Set(moods.map((m) => new Date(m.date).toDateString()));
+  let streak = 0;
+  const cursor = new Date();
+  while (days.has(cursor.toDateString())) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+};
+
 export default function BadgesScreen({ navigation }) {
+  const goBack = useSafeGoBack();
   const [badges, setBadges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedBadge, setSelectedBadge] = useState(null);
@@ -106,10 +113,37 @@ export default function BadgesScreen({ navigation }) {
   const loadBadges = async () => {
     try {
       setLoading(true);
-      await dataStore.initialize();
-      setBadges(ALL_BADGES);
+      const [moods, journals, assigns, awarded] = await Promise.all([
+        listMyMoodEntries(),
+        listMyJournalEntries(),
+        listMyAssignments(),
+        listMyBadges(),
+      ]);
+      const completed = (assigns || []).filter((a) => a.status === 'completed');
+      const stats = {
+        moodCount: (moods || []).length,
+        moodStreak: computeMoodStreak(moods || []),
+        journalCount: (journals || []).length,
+        completedCount: completed.length,
+        completedDistinct: new Set(completed.map((a) => a.worksheetId)).size,
+        activeDays: distinctDays([
+          ...(moods || []),
+          ...(journals || []),
+          ...completed,
+        ]),
+      };
+      const awardedIds = new Set((awarded || []).map((b) => b.badgeId));
+      setBadges(
+        BADGE_CATALOG.map((b) => {
+          const progress = Math.min(b.compute(stats), b.requirement);
+          return {
+            ...b,
+            progress: awardedIds.has(b.id) ? b.requirement : progress,
+          };
+        })
+      );
     } catch (error) {
-      console.error('[v0] Error loading badges:', error);
+      console.error('[Badges] load error', error);
     } finally {
       setLoading(false);
     }
@@ -155,7 +189,7 @@ export default function BadgesScreen({ navigation }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => goBack()}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Achievements</Text>

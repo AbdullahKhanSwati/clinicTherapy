@@ -20,7 +20,13 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  getActivePairingForUser,
+  getPartnerProfileForUser,
+  getLatestPartnerCheckinForUser,
+  createPartnerCheckin,
+} from '../../services/api';
 
 const INK = '#1A2332';
 const BLUSH = '#D4536B';
@@ -28,11 +34,13 @@ const CREAM = '#FAF7F2';
 
 /**
  * Daily/Weekly Partner Check-In screen.
- * Captures mood (1-10), connection (1-10), stress (1-10) + need + appreciation.
+ * Captures mood (1-10), connection (1-10), stress (1-10) + need.
  * After both partners submit, the home screen surfaces a shared summary.
  */
 export default function DailyCheckInScreen({ navigation }) {
-  const [user, setUser] = useState(null);
+  const { profile: user } = useAuth();
+  const [pairing, setPairing] = useState(null);
+  const [partner, setPartner] = useState(null);
   const [partnerLastCheckin, setPartnerLastCheckin] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -41,53 +49,64 @@ export default function DailyCheckInScreen({ navigation }) {
   const [connection, setConnection] = useState(7);
   const [stress, setStress] = useState(5);
   const [need, setNeed] = useState('');
-  const [appreciation, setAppreciation] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      if (!user?.id) {
+        setLoading(false);
+        return;
+      }
       try {
-        await dataStore.initialize();
-        const u = await dataStore.getCurrentUser();
-        setUser(u);
-        if (u) {
-          const partnerId = await dataStore.getPartnerIdForUser(u.id);
-          if (partnerId) {
-            const latest = await dataStore.getLatestCheckinForUser(partnerId);
-            setPartnerLastCheckin(latest);
+        const p = await getActivePairingForUser(user.id);
+        if (cancelled) return;
+        setPairing(p);
+        if (p) {
+          const partnerProfile = await getPartnerProfileForUser(user.id);
+          if (cancelled) return;
+          setPartner(partnerProfile);
+          if (partnerProfile) {
+            const latest = await getLatestPartnerCheckinForUser(
+              partnerProfile.id
+            );
+            if (!cancelled) setPartnerLastCheckin(latest);
           }
         }
       } catch (e) {
         console.log('[DailyCheckIn] load', e);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
-  const canSubmit = !submitting && need.trim().length > 0;
+  const canSubmit = !submitting && need.trim().length > 0 && !!pairing;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
     try {
       setSubmitting(true);
-      await dataStore.addPartnerCheckin({
-        userId: user?.id,
+      await createPartnerCheckin({
+        userId: user.id,
+        pairingId: pairing?.id,
         mood,
         connection,
         stress,
         need: need.trim(),
-        appreciation: appreciation.trim(),
       });
       Alert.alert(
         'Check-in saved',
         partnerLastCheckin
-          ? 'Your partner has also checked in today. Open the home screen to see your shared summary.'
-          : 'Saved. When your partner also checks in, you\'ll see a shared summary.',
+          ? 'Your partner has also checked in recently. Open the home screen to see your shared summary.'
+          : "Saved. When your partner also checks in, you'll see a shared summary.",
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } catch (e) {
       console.log('[DailyCheckIn] save', e);
-      Alert.alert('Error', 'Could not save your check-in. Please try again.');
+      Alert.alert('Error', e.message || 'Could not save your check-in. Please try again.');
       setSubmitting(false);
     }
   };
@@ -97,6 +116,40 @@ export default function DailyCheckInScreen({ navigation }) {
       <SafeAreaView style={styles.container}>
         <View style={styles.center}>
           <ActivityIndicator color={INK} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!pairing) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => navigation.goBack()}
+          >
+            <Feather name="x" size={20} color={INK} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: SPACING.md }}>
+            <Text style={styles.eyebrow}>RELATIONSHIP PULSE</Text>
+            <Text style={styles.headerTitle}>Daily Check-In</Text>
+          </View>
+        </View>
+        <View style={styles.center}>
+          <Feather name="users" size={32} color={COLORS.gray300} />
+          <Text style={styles.notPairedTitle}>No partner linked yet</Text>
+          <Text style={styles.notPairedText}>
+            Your therapist needs to pair you with your partner before you can do
+            a shared check-in.
+          </Text>
+          <TouchableOpacity
+            style={styles.notPairedBtn}
+            onPress={() => navigation.replace('CouplePairing')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.notPairedBtnText}>View Pairing Status</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -162,27 +215,21 @@ export default function DailyCheckInScreen({ navigation }) {
             />
           </View>
 
-          <View style={styles.fieldBlock}>
-            <Text style={styles.fieldLabel}>ONE APPRECIATION FOR MY PARTNER</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Something they did, said, or are..."
-              placeholderTextColor={COLORS.gray400}
-              value={appreciation}
-              onChangeText={setAppreciation}
-              multiline
-            />
-          </View>
-
           {partnerLastCheckin && (
             <View style={styles.partnerCard}>
               <Text style={styles.partnerCardEyebrow}>
-                YOUR PARTNER · {formatTimeAgo(partnerLastCheckin.date)}
+                {(partner?.name?.split(' ')[0] || 'YOUR PARTNER').toUpperCase()} ·{' '}
+                {formatTimeAgo(
+                  partnerLastCheckin.createdAt || partnerLastCheckin.date
+                )}
               </Text>
               <View style={styles.partnerStatRow}>
-                <Stat label="MOOD" value={partnerLastCheckin.mood} />
-                <Stat label="CONNECTION" value={partnerLastCheckin.connection} />
-                <Stat label="STRESS" value={partnerLastCheckin.stress} />
+                <Stat label="MOOD" value={partnerLastCheckin.mood ?? '—'} />
+                <Stat
+                  label="CONNECTION"
+                  value={partnerLastCheckin.connection ?? '—'}
+                />
+                <Stat label="STRESS" value={partnerLastCheckin.stress ?? '—'} />
               </View>
               {partnerLastCheckin.need ? (
                 <View style={styles.partnerNote}>
@@ -293,6 +340,7 @@ const Stat = ({ label, value }) => (
 );
 
 const formatTimeAgo = (iso) => {
+  if (!iso) return '';
   const ms = Date.now() - new Date(iso).getTime();
   const hours = Math.round(ms / 3600000);
   if (hours < 1) return 'just now';
@@ -303,7 +351,7 @@ const formatTimeAgo = (iso) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl },
 
   headerRow: {
     flexDirection: 'row',
@@ -494,6 +542,33 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 14,
     marginLeft: 8,
+    letterSpacing: 0.2,
+  },
+
+  notPairedTitle: {
+    fontSize: TYPOGRAPHY.base,
+    fontWeight: '800',
+    color: INK,
+    marginTop: SPACING.md,
+    marginBottom: 6,
+  },
+  notPairedText: {
+    fontSize: 13,
+    color: COLORS.gray500,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+    lineHeight: 20,
+  },
+  notPairedBtn: {
+    backgroundColor: INK,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.full,
+  },
+  notPairedBtnText: {
+    color: COLORS.white,
+    fontWeight: '700',
+    fontSize: 13,
     letterSpacing: 0.2,
   },
 });

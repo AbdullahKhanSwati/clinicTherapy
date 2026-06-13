@@ -10,10 +10,11 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import useSafeGoBack from '../hooks/useSafeGoBack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
-import dataStore from '../utils/dataStore';
-import { useAuth } from '../../App';
+import { getCurrentProfile } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import {
   applyNotifSettings,
   ensurePermission,
@@ -21,6 +22,7 @@ import {
 } from '../utils/notifications';
 
 export default function SettingsScreen({ navigation }) {
+  const goBack = useSafeGoBack();
   const { signOut } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -37,9 +39,7 @@ export default function SettingsScreen({ navigation }) {
     const loadData = async () => {
       try {
         setLoading(true);
-        await dataStore.initialize();
-
-        const user = await dataStore.getCurrentUser();
+        const user = await getCurrentProfile();
         setCurrentUser(user);
 
         // Load saved settings
@@ -50,7 +50,7 @@ export default function SettingsScreen({ navigation }) {
         const notifSettings = await getNotifSettings();
         setDailyCheckIn(!!notifSettings.dailyCheckIn);
       } catch (error) {
-        console.error('[v0] Error loading settings:', error);
+        console.error('[Settings] Error loading settings:', error);
       } finally {
         setLoading(false);
       }
@@ -65,7 +65,7 @@ export default function SettingsScreen({ navigation }) {
       setSettings(newSettings);
       await AsyncStorage.setItem('appSettings', JSON.stringify(newSettings));
     } catch (error) {
-      console.error('[v0] Error saving settings:', error);
+      console.error('[Settings] Error saving settings:', error);
     }
   };
 
@@ -99,7 +99,7 @@ export default function SettingsScreen({ navigation }) {
           try {
             await signOut();
           } catch (error) {
-            console.error('[v0] Error logging out:', error);
+            console.error('[Settings] Error logging out:', error);
           }
         },
         style: 'destructive',
@@ -109,21 +109,35 @@ export default function SettingsScreen({ navigation }) {
 
   const handleClearData = () => {
     Alert.alert(
-      'Clear All Data',
-      'This will delete all your local data. This action cannot be undone.',
+      'Reset local preferences',
+      'This clears the app preferences cached on this device. Your account and history in the cloud are not affected. Continue?',
       [
         {
           text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Clear',
+          text: 'Reset',
           onPress: async () => {
             try {
-              await dataStore.clearAllData();
-              Alert.alert('Success', 'All data has been cleared.');
+              await AsyncStorage.multiRemove([
+                'appSettings',
+                'notifSettings',
+              ]);
+              // Reset to the SAME shape used in useState above so the
+              // toggles below render the correct on/off state.
+              setSettings({
+                notifications: true,
+                moodReminders: true,
+                dataSharing: false,
+                darkMode: false,
+                soundEnabled: true,
+              });
+              setDailyCheckIn(false);
+              Alert.alert('Done', 'Local preferences reset.');
             } catch (error) {
-              console.error('[v0] Error clearing data:', error);
+              console.error('[Settings] reset error', error);
+              Alert.alert('Error', error?.message || 'Could not reset preferences.');
             }
           },
           style: 'destructive',
@@ -146,7 +160,7 @@ export default function SettingsScreen({ navigation }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => goBack()}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Settings</Text>
@@ -250,12 +264,28 @@ export default function SettingsScreen({ navigation }) {
               />
             </View>
             <View style={styles.divider} />
-            <TouchableOpacity style={styles.settingRow}>
+            <TouchableOpacity
+              style={styles.settingRow}
+              onPress={() =>
+                Alert.alert(
+                  'Privacy Policy',
+                  'A full privacy policy will be published before public launch. For now, your data is stored in Supabase and only visible to you, your assigned therapist, and the admin.'
+                )
+              }
+            >
               <Text style={styles.settingLabel}>Privacy Policy</Text>
               <Text style={styles.chevron}>→</Text>
             </TouchableOpacity>
             <View style={styles.divider} />
-            <TouchableOpacity style={styles.settingRow}>
+            <TouchableOpacity
+              style={styles.settingRow}
+              onPress={() =>
+                Alert.alert(
+                  'Terms of Service',
+                  'Terms of service will be published before public launch.'
+                )
+              }
+            >
               <Text style={styles.settingLabel}>Terms of Service</Text>
               <Text style={styles.chevron}>→</Text>
             </TouchableOpacity>

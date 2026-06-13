@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import {
@@ -17,7 +17,7 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
+import { listAllProfiles, setParentsForChild } from '../../services/api';
 
 const INK = '#1A2332';
 const SAGE = '#15803D';
@@ -38,13 +38,15 @@ export default function AssignParentScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [draftParentIds, setDraftParentIds] = useState(null);
+  const insets = useSafeAreaInsets();
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      await dataStore.initialize();
-      const allUsers = await dataStore.getUsers();
-      setUsers(allUsers || {});
+      const list = await listAllProfiles();
+      const map = {};
+      (list || []).forEach((p) => { map[p.id] = p; });
+      setUsers(map);
     } catch (e) {
       console.log('[AssignParent] load', e);
     } finally {
@@ -93,33 +95,13 @@ export default function AssignParentScreen({ route, navigation }) {
     if (!dirty || !child) return;
     try {
       setWorking(true);
-      const allUsers = { ...users };
-      const targetIds = new Set(draftParentIds);
-
-      parents.forEach((p) => {
-        const existing = new Set(p.children || []);
-        const shouldHave = targetIds.has(p.id);
-        const hasIt = existing.has(childId);
-        if (shouldHave && !hasIt) {
-          allUsers[p.id] = {
-            ...p,
-            children: [...(p.children || []), childId],
-          };
-        } else if (!shouldHave && hasIt) {
-          allUsers[p.id] = {
-            ...p,
-            children: (p.children || []).filter((id) => id !== childId),
-          };
-        }
-      });
-
-      await dataStore.setUsers(allUsers);
-      setUsers(allUsers);
+      await setParentsForChild(childId, draftParentIds);
+      await load();
       setDraftParentIds(null);
       Alert.alert('Saved', 'Parent assignment updated.');
     } catch (e) {
       console.log('[AssignParent] save', e);
-      Alert.alert('Error', 'Could not save the assignment.');
+      Alert.alert('Error', e?.message || 'Could not save the assignment.');
     } finally {
       setWorking(false);
     }
@@ -270,7 +252,7 @@ export default function AssignParentScreen({ route, navigation }) {
         <View style={{ height: SPACING.xl }} />
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + SPACING.md }]}>
         <TouchableOpacity
           style={[styles.footerBtn, styles.footerBtnSecondary]}
           onPress={() => setDraftParentIds(null)}

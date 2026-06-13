@@ -8,83 +8,88 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import useSafeGoBack from '../hooks/useSafeGoBack';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
-import dataStore from '../utils/dataStore';
+import {
+  getCurrentProfile,
+  listWorksheets,
+  listMyAssignments,
+} from '../services/api';
 
-const THERAPY_PROGRAMS = [
-  {
-    id: 'cbt',
-    title: 'Cognitive Behavioral Therapy',
-    emoji: '🧠',
-    description: 'Learn to identify and change negative thought patterns',
-    duration: '8 weeks',
-    sessions: 8,
+// Display chrome (icon + colour) for known program ids. Anything else falls
+// back to a neutral default.
+const PROGRAM_DISPLAY = {
+  gottman_12week: { emoji: '💞', color: '#D4536B', title: 'Gottman 12-Week' },
+  psychodynamic_suite: { emoji: '🧠', color: COLORS.primary, title: 'Psychodynamic Suite' },
+};
+
+const programDisplay = (id) =>
+  PROGRAM_DISPLAY[id] || {
+    emoji: '📚',
     color: COLORS.primary,
-  },
-  {
-    id: 'dbt',
-    title: 'Dialectical Behavior Therapy',
-    emoji: '🎯',
-    description: 'Develop emotional regulation and distress tolerance skills',
-    duration: '12 weeks',
-    sessions: 12,
-    color: '#FF6B6B',
-  },
-  {
-    id: 'mindfulness',
-    title: 'Mindfulness & Meditation',
-    emoji: '🧘',
-    description: 'Build awareness and reduce anxiety through mindfulness',
-    duration: '6 weeks',
-    sessions: 6,
-    color: '#4ECDC4',
-  },
-  {
-    id: 'ace',
-    title: 'Acceptance & Commitment Therapy',
-    emoji: '🌱',
-    description: 'Accept what you cannot control and commit to valued living',
-    duration: '10 weeks',
-    sessions: 10,
-    color: '#95E1D3',
-  },
-  {
-    id: 'social',
-    title: 'Social Skills Training',
-    emoji: '👥',
-    description: 'Improve communication and interpersonal relationships',
-    duration: '8 weeks',
-    sessions: 8,
-    color: '#F38181',
-  },
-  {
-    id: 'sleep',
-    title: 'Sleep & Wellness',
-    emoji: '😴',
-    description: 'Improve sleep quality and develop healthy habits',
-    duration: '4 weeks',
-    sessions: 4,
-    color: '#AA96DA',
-  },
-];
+    title: id,
+  };
 
 export default function TherapyProgramsScreen({ navigation }) {
+  const goBack = useSafeGoBack();
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [programs, setPrograms] = useState([]);
   const [enrolledPrograms, setEnrolledPrograms] = useState([]);
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
-        await dataStore.initialize();
-        const user = await dataStore.getCurrentUser();
+        const [user, allWS, myAssigns] = await Promise.all([
+          getCurrentProfile(),
+          listWorksheets(),
+          listMyAssignments(),
+        ]);
         setCurrentUser(user);
 
-        // Simulate enrolled programs
-        setEnrolledPrograms(['cbt', 'mindfulness']);
+        // Build the program list from DB worksheets grouped by program_id,
+        // only including programs relevant to this user's role.
+        const role = user?.role;
+        const eligible = (allWS || []).filter(
+          (w) =>
+            w.programId &&
+            (!role || w.audience === role || w.audience === 'all')
+        );
+        const byProgram = new Map();
+        eligible.forEach((w) => {
+          const cur = byProgram.get(w.programId);
+          if (cur) {
+            cur.sessions += 1;
+          } else {
+            const d = programDisplay(w.programId);
+            byProgram.set(w.programId, {
+              id: w.programId,
+              title: d.title,
+              emoji: d.emoji,
+              color: d.color,
+              description: w.description || 'Multi-session program',
+              duration: '',
+              sessions: 1,
+            });
+          }
+        });
+        const list = Array.from(byProgram.values()).map((p) => ({
+          ...p,
+          duration: `${p.sessions} ${p.sessions === 1 ? 'session' : 'sessions'}`,
+        }));
+        setPrograms(list);
+
+        // Enrollment derived from my assignments: any program whose worksheet
+        // I've been assigned counts as "enrolled".
+        const myProgramIds = new Set(
+          (myAssigns || [])
+            .map((a) => (allWS || []).find((w) => w.id === a.worksheetId)?.programId)
+            .filter(Boolean)
+        );
+        setEnrolledPrograms(Array.from(myProgramIds));
       } catch (error) {
-        console.error('[v0] Error loading programs:', error);
+        console.error('[TherapyPrograms] load error', error);
       } finally {
         setLoading(false);
       }
@@ -107,7 +112,7 @@ export default function TherapyProgramsScreen({ navigation }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => goBack()}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Therapy Programs</Text>
@@ -122,7 +127,14 @@ export default function TherapyProgramsScreen({ navigation }) {
         </View>
 
         <View style={styles.programsContainer}>
-          {THERAPY_PROGRAMS.map(program => {
+          {programs.length === 0 && (
+            <View style={[styles.programCard, { alignItems: 'center' }]}>
+              <Text style={{ color: COLORS.gray500, textAlign: 'center' }}>
+                No programs available yet.
+              </Text>
+            </View>
+          )}
+          {programs.map(program => {
             const isEnrolled = enrolledPrograms.includes(program.id);
             return (
               <TouchableOpacity

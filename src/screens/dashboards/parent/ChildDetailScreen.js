@@ -16,14 +16,31 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
-import { WORKSHEET_TEMPLATES } from '../../../data/worksheetTemplates';
+import Avatar from '../../../components/Avatar';
+import {
+  getProfileById,
+  listMoodEntries,
+  listAssignmentsFor,
+  listNotesForClient,
+  listWorksheets,
+} from '../../../services/api';
 
 const INK = '#1A2332';
 const SAGE = '#15803D';
 const WARNING = '#D97706';
 const DANGER = '#DC2626';
 const SUCCESS = '#15803D';
+
+const ACCESSORY_EMOJI = {
+  none: '',
+  crown: '👑',
+  star: '⭐',
+  sparkles: '✨',
+  flower: '🌸',
+  heart: '💖',
+  hat: '🎩',
+  rainbow: '🌈',
+};
 
 const MOOD_EMOJI = {
   happy: '😊', sad: '😢', angry: '😠', anxious: '😰',
@@ -33,38 +50,55 @@ const MOOD_EMOJI = {
 /**
  * ChildDetailScreen (parent view) — read-only summary of one of the parent's
  * children. Shows mood timeline, worksheet progress, and therapist notes.
+ *
+ * All data is fetched live from Supabase; RLS enforces that the signed-in
+ * parent can only see rows belonging to a child they are linked to.
  */
 export default function ChildDetailScreen({ route, navigation }) {
   const { childId } = route?.params || {};
   const [child, setChild] = useState(null);
   const [moods, setMoods] = useState([]);
   const [assignments, setAssignments] = useState([]);
-  const [completed, setCompleted] = useState([]);
+  const [worksheetsById, setWorksheetsById] = useState({});
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
+        if (!childId) {
+          setLoading(false);
+          setError('No child specified.');
+          return;
+        }
         try {
           setLoading(true);
-          await dataStore.initialize();
-          const [c, m, a, comp, n] = await Promise.all([
-            dataStore.getUserById(childId),
-            dataStore.getMoodEntriesByUser(childId),
-            dataStore.getAssignmentsByClient(childId),
-            dataStore.getCompletedWorksheetsByUser(childId),
-            dataStore.getNotesByClient(childId),
+          setError(null);
+          const [c, m, a, ws, n] = await Promise.all([
+            getProfileById(childId),
+            listMoodEntries(childId),
+            listAssignmentsFor(childId),
+            listWorksheets(),
+            listNotesForClient(childId),
           ]);
           if (cancelled) return;
           setChild(c);
           setMoods(m || []);
           setAssignments(a || []);
-          setCompleted(comp || []);
-          setNotes(n || []);
+          const map = {};
+          (ws || []).forEach((w) => {
+            map[w.id] = w;
+          });
+          setWorksheetsById(map);
+          // Hide notes flagged private by the therapist. RLS lets the
+          // parent see them, but they're meant for the therapist's
+          // record only.
+          setNotes((n || []).filter((note) => !note.isPrivate));
         } catch (e) {
           console.log('[Parent ChildDetail] load error', e);
+          if (!cancelled) setError("Couldn't load this child's details.");
         } finally {
           if (!cancelled) setLoading(false);
         }
@@ -97,7 +131,8 @@ export default function ChildDetailScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
         <View style={styles.center}>
-          <Text style={styles.errorText}>Child not found.</Text>
+          <Feather name="user-x" size={32} color={COLORS.gray300} />
+          <Text style={styles.errorText}>{error || 'Child not found.'}</Text>
         </View>
       </SafeAreaView>
     );
@@ -132,13 +167,19 @@ export default function ChildDetailScreen({ route, navigation }) {
       >
         {/* Profile hero */}
         <View style={styles.profileCard}>
-          <View
-            style={[
-              styles.avatar,
-              { backgroundColor: child.profileColor || SAGE },
-            ]}
-          >
-            <Text style={styles.avatarEmoji}>{child.avatar || '👤'}</Text>
+          <View style={styles.avatarWrap}>
+            <Avatar
+              value={child.avatar}
+              name={child.name}
+              size={80}
+              backgroundColor={child.profileColor || SAGE}
+              emojiSize={38}
+            />
+            {child.accessory && ACCESSORY_EMOJI[child.accessory] ? (
+              <Text style={styles.accessoryBadge}>
+                {ACCESSORY_EMOJI[child.accessory]}
+              </Text>
+            ) : null}
           </View>
           <Text style={styles.childName}>{child.name}</Text>
           <View style={styles.tagRow}>
@@ -147,11 +188,11 @@ export default function ChildDetailScreen({ route, navigation }) {
                 {(child.role || '').toUpperCase()}
               </Text>
             </View>
-            {child.age && (
+            {child.age ? (
               <View style={styles.tag}>
                 <Text style={styles.tagText}>{child.age} YEARS</Text>
               </View>
-            )}
+            ) : null}
           </View>
           {child.emotionalFocus && child.emotionalFocus.length > 0 && (
             <View style={styles.focusRow}>
@@ -192,20 +233,25 @@ export default function ChildDetailScreen({ route, navigation }) {
               </Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.moodMood}>
-                  {(latestMood.mood || '').replace(/^./, (c) => c.toUpperCase())}{' '}
-                  · intensity {latestMood.intensity}/10
+                  {(latestMood.mood || '').replace(/^./, (c) => c.toUpperCase())}
+                  {typeof latestMood.score === 'number'
+                    ? ` · intensity ${latestMood.score}/10`
+                    : ''}
                 </Text>
-                {latestMood.notes ? (
+                {latestMood.note ? (
                   <Text style={styles.moodNote} numberOfLines={2}>
-                    "{latestMood.notes}"
+                    "{latestMood.note}"
                   </Text>
                 ) : null}
                 <Text style={styles.moodDate}>
-                  {new Date(latestMood.date).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}
+                  {new Date(latestMood.date || latestMood.createdAt).toLocaleDateString(
+                    'en-US',
+                    {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    }
+                  )}
                 </Text>
               </View>
             </View>
@@ -222,23 +268,24 @@ export default function ChildDetailScreen({ route, navigation }) {
           </View>
         ) : (
           assignments.slice(0, 5).map((a) => {
-            const w = WORKSHEET_TEMPLATES[a.worksheetId];
+            const w = worksheetsById[a.worksheetId];
             if (!w) return null;
             const isDone = a.status === 'completed';
             const isOverdue =
-              !isDone && new Date(a.dueDate) < new Date();
+              !isDone && a.dueDate && new Date(a.dueDate) < new Date();
+            const isInProgress = a.status === 'in_progress';
             const statusColor = isDone
               ? SUCCESS
               : isOverdue
               ? DANGER
-              : a.status === 'in-progress'
+              : isInProgress
               ? WARNING
               : INK;
             const statusLabel = isDone
               ? 'COMPLETED'
               : isOverdue
               ? 'OVERDUE'
-              : a.status === 'in-progress'
+              : isInProgress
               ? 'IN PROGRESS'
               : 'NOT STARTED';
             return (
@@ -266,7 +313,7 @@ export default function ChildDetailScreen({ route, navigation }) {
                     </Text>
                   </View>
                 </View>
-                {a.dueDate && !isDone && (
+                {a.dueDate && !isDone ? (
                   <Text
                     style={[
                       styles.wsDue,
@@ -279,7 +326,7 @@ export default function ChildDetailScreen({ route, navigation }) {
                       day: 'numeric',
                     })}
                   </Text>
-                )}
+                ) : null}
               </View>
             );
           })
@@ -302,13 +349,13 @@ export default function ChildDetailScreen({ route, navigation }) {
                   {(n.category || 'NOTE').toUpperCase()}
                 </Text>
                 <Text style={styles.noteDate}>
-                  {new Date(n.date).toLocaleDateString('en-US', {
+                  {new Date(n.createdAt).toLocaleDateString('en-US', {
                     month: 'short',
                     day: 'numeric',
                   })}
                 </Text>
               </View>
-              <Text style={styles.noteContent}>{n.content}</Text>
+              <Text style={styles.noteContent}>{n.body || n.content}</Text>
             </View>
           ))
         )}
@@ -320,7 +367,7 @@ export default function ChildDetailScreen({ route, navigation }) {
             <View style={styles.moodHistoryCard}>
               {moods.slice(0, 7).map((m, i) => (
                 <View
-                  key={i}
+                  key={m.id}
                   style={[
                     styles.moodHistoryRow,
                     i < Math.min(moods.length, 7) - 1 && styles.borderBottom,
@@ -333,14 +380,14 @@ export default function ChildDetailScreen({ route, navigation }) {
                     <Text style={styles.moodHistoryLabel}>
                       {(m.mood || '').replace(/^./, (c) => c.toUpperCase())}
                     </Text>
-                    {m.notes ? (
+                    {m.note ? (
                       <Text style={styles.moodHistoryNote} numberOfLines={1}>
-                        "{m.notes}"
+                        "{m.note}"
                       </Text>
                     ) : null}
                   </View>
                   <Text style={styles.moodHistoryDate}>
-                    {new Date(m.date).toLocaleDateString('en-US', {
+                    {new Date(m.date || m.createdAt).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
                     })}
@@ -359,8 +406,14 @@ export default function ChildDetailScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  errorText: { fontSize: 14, color: COLORS.error, fontWeight: '600' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl },
+  errorText: {
+    fontSize: 14,
+    color: COLORS.gray500,
+    fontWeight: '600',
+    marginTop: SPACING.md,
+    textAlign: 'center',
+  },
 
   headerRow: {
     flexDirection: 'row',
@@ -401,15 +454,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.gray100,
   },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+  avatarWrap: {
+    position: 'relative',
     marginBottom: SPACING.md,
   },
-  avatarEmoji: { fontSize: 38 },
+  accessoryBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -4,
+    fontSize: 28,
+  },
   childName: {
     fontSize: TYPOGRAPHY.xl,
     fontWeight: '800',

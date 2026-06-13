@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,18 +7,12 @@ import {
   TouchableOpacity,
   TextInput,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/colors';
-import { WORKSHEET_TEMPLATES } from '../../data/worksheetTemplates';
-
-const CATEGORIES = [
-  'All',
-  'Anxiety Management',
-  'Emotional Regulation',
-  'Self-Esteem',
-  'Stress Management',
-];
+import { listWorksheets } from '../../services/api';
 
 const DIFFICULTIES = ['All', 'beginner', 'intermediate', 'advanced'];
 
@@ -26,21 +20,45 @@ export default function WorksheetLibraryScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedDifficulty, setSelectedDifficulty] = useState('All');
+  const [allWorksheets, setAllWorksheets] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Get all worksheets from templates
-  const allWorksheets = useMemo(() => {
-    return Object.values(WORKSHEET_TEMPLATES).map(ws => ({
-      ...ws,
-      id: ws.id,
-    }));
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          setLoading(true);
+          const list = await listWorksheets();
+          if (!cancelled) setAllWorksheets(list || []);
+        } catch (e) {
+          console.log('[WorksheetLibrary] load error', e);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
+  // Derive the category list from the actual worksheet catalog
+  const CATEGORIES = useMemo(() => {
+    const seen = new Set();
+    allWorksheets.forEach((w) => {
+      if (w.category) seen.add(w.category);
+    });
+    return ['All', ...Array.from(seen).sort()];
+  }, [allWorksheets]);
 
   // Filter worksheets based on search and selections
   const filteredWorksheets = useMemo(() => {
+    const q = searchQuery.toLowerCase();
     return allWorksheets.filter(worksheet => {
       const matchesSearch =
-        worksheet.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        worksheet.description.toLowerCase().includes(searchQuery.toLowerCase());
+        (worksheet.title || '').toLowerCase().includes(q) ||
+        (worksheet.description || '').toLowerCase().includes(q);
 
       const matchesCategory =
         selectedCategory === 'All' || worksheet.category === selectedCategory;
@@ -50,12 +68,13 @@ export default function WorksheetLibraryScreen({ navigation }) {
 
       return matchesSearch && matchesCategory && matchesDifficulty;
     });
-  }, [searchQuery, selectedCategory, selectedDifficulty]);
+  }, [allWorksheets, searchQuery, selectedCategory, selectedDifficulty]);
 
+  // Tapping a worksheet drops the therapist into the Assign flow with that
+  // worksheet pre-selected. There is no separate WorksheetPreview screen yet.
   const handleSelectWorksheet = (worksheet) => {
-    navigation.navigate('WorksheetPreview', {
+    navigation.navigate('AssignWorksheet', {
       worksheetId: worksheet.id,
-      canAssign: true,
     });
   };
 
@@ -89,8 +108,11 @@ export default function WorksheetLibraryScreen({ navigation }) {
         <View style={styles.cardFooter}>
           <Text style={styles.time}>⏱️ {worksheet.estimatedTime}</Text>
           <Text style={styles.audience}>👥 {worksheet.targetAudience}</Text>
-          <TouchableOpacity style={styles.previewButton}>
-            <Text style={styles.previewButtonText}>Preview</Text>
+          <TouchableOpacity
+            style={styles.previewButton}
+            onPress={() => handleSelectWorksheet(worksheet)}
+          >
+            <Text style={styles.previewButtonText}>Assign</Text>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -188,11 +210,24 @@ export default function WorksheetLibraryScreen({ navigation }) {
         </View>
 
         {/* Worksheets List */}
-        {filteredWorksheets.length === 0 ? (
+        {loading ? (
+          <View style={styles.emptyContainer}>
+            <ActivityIndicator color={COLORS.primary} />
+            <Text style={styles.emptySubtext}>Loading worksheets…</Text>
+          </View>
+        ) : filteredWorksheets.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyEmoji}>📋</Text>
-            <Text style={styles.emptyText}>No worksheets found</Text>
-            <Text style={styles.emptySubtext}>Try adjusting your filters</Text>
+            <Text style={styles.emptyText}>
+              {allWorksheets.length === 0
+                ? 'No worksheets in the library yet'
+                : 'No worksheets match your filters'}
+            </Text>
+            <Text style={styles.emptySubtext}>
+              {allWorksheets.length === 0
+                ? 'Create your first worksheet from the module hub'
+                : 'Try adjusting your filters'}
+            </Text>
           </View>
         ) : (
           <FlatList

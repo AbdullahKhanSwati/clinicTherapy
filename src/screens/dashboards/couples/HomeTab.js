@@ -16,14 +16,38 @@ import {
   BORDER_RADIUS,
   SHADOWS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
-import { WORKSHEET_TEMPLATES } from '../../../data/worksheetTemplates';
+import { useAuth } from '../../../contexts/AuthContext';
+import Avatar from '../../../components/Avatar';
+import {
+  listMyAssignments,
+  listMyMoodEntries,
+  listMoodEntries,
+  listWorksheets,
+  listMyNotifications,
+  getActivePairingForUser,
+  getPartnerProfileForUser,
+  listPartnerCheckinsForUser,
+  getLatestPartnerCheckinForUser,
+  listRepairRequestsForUser,
+  listAppreciationsForUser,
+} from '../../../services/api';
 
 // Refined warm palette layered on top of brand tokens
 const BLUSH = '#D4536B';        // refined, muted rose accent
 const BLUSH_SOFT = '#F7E8EC';   // subtle background tint
 const CREAM = '#FAF7F2';        // editorial cream
 const INK = '#1A2332';          // deep navy ink
+
+const ACCESSORY_EMOJI = {
+  none: '',
+  crown: '👑',
+  star: '⭐',
+  sparkles: '✨',
+  flower: '🌸',
+  heart: '💖',
+  hat: '🎩',
+  rainbow: '🌈',
+};
 
 const MOOD_EMOJIS = {
   happy: '😊',
@@ -59,16 +83,9 @@ const QUESTIONS = [
   'What is one thing you are grateful for about your partner today?',
 ];
 
-const STATUS_PROGRESS = { pending: 0, 'in-progress': 50, completed: 100 };
-
-const PARTNER_LOOKUP = {
-  partner1: 'partner2',
-  partner2: 'partner1',
-};
-
-const isCheckinFromToday = (checkin) => {
-  if (!checkin || !checkin.date) return false;
-  const d = new Date(checkin.date);
+const isToday = (iso) => {
+  if (!iso) return false;
+  const d = new Date(iso);
   const today = new Date();
   return (
     d.getFullYear() === today.getFullYear() &&
@@ -77,72 +94,146 @@ const isCheckinFromToday = (checkin) => {
   );
 };
 
+const toDayKey = (iso) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+};
+const dayKeyOf = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+
+const computeStreak = (checkins) => {
+  const days = new Set(
+    (checkins || []).map((c) => toDayKey(c.date || c.createdAt)).filter(Boolean)
+  );
+  let streak = 0;
+  const cursor = new Date();
+  while (days.has(dayKeyOf(cursor))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+};
+
+const computeBondScore = ({
+  myCheckin,
+  partnerCheckin,
+  appreciations,
+  repairs,
+}) => {
+  // Lightweight wellness index from real data.
+  // - Average of latest mood, connection, inverted-stress across both
+  //   partners' newest check-ins (0–10 → 0–100 each).
+  // - Boost for appreciations exchanged in the last 14 days.
+  // - Small penalty for unresolved repair requests.
+  let parts = [];
+  const fold = (c) => {
+    if (!c) return;
+    if (typeof c.mood === 'number') parts.push((c.mood / 10) * 100);
+    if (typeof c.connection === 'number') parts.push((c.connection / 10) * 100);
+    if (typeof c.stress === 'number') parts.push(((10 - c.stress) / 10) * 100);
+  };
+  fold(myCheckin);
+  fold(partnerCheckin);
+  if (parts.length === 0) return null;
+  let score = parts.reduce((s, n) => s + n, 0) / parts.length;
+  const recentApps = (appreciations || []).filter(
+    (a) => Date.now() - new Date(a.createdAt).getTime() < 14 * 86400000
+  );
+  score += Math.min(10, recentApps.length * 1.5);
+  const openRepairs = (repairs || []).filter((r) => r.status === 'sent').length;
+  score -= openRepairs * 4;
+  return Math.max(0, Math.min(100, Math.round(score)));
+};
+
 export default function CouplesHomeTab() {
   const navigation = useNavigation();
-  const [user, setUser] = useState(null);
+  const { profile: user } = useAuth();
   const [partner, setPartner] = useState(null);
+  const [pairing, setPairing] = useState(null);
   const [userMood, setUserMood] = useState(null);
   const [partnerMood, setPartnerMood] = useState(null);
   const [pending, setPending] = useState([]);
+  const [worksheetsById, setWorksheetsById] = useState({});
   const [userCheckin, setUserCheckin] = useState(null);
   const [partnerCheckin, setPartnerCheckin] = useState(null);
   const [pendingRepair, setPendingRepair] = useState(null);
   const [latestAppreciation, setLatestAppreciation] = useState(null);
-  const [isPaired, setIsPaired] = useState(true);
+  const [appreciations, setAppreciations] = useState([]);
+  const [myCheckins, setMyCheckins] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
+        if (!user?.id) return;
         try {
           setLoading(true);
-          await dataStore.initialize();
-          const u = await dataStore.getCurrentUser();
+
+          // Pairing + partner profile
+          const p = await getActivePairingForUser(user.id);
           if (cancelled) return;
-          setUser(u);
+          setPairing(p);
 
-          if (u) {
-            // Determine partner via the new pairing system, fall back to lookup
-            let partnerId = await dataStore.getPartnerIdForUser(u.id);
-            if (!partnerId) partnerId = PARTNER_LOOKUP[u.id];
-            if (!cancelled) setIsPaired(!!partnerId);
-
+          let partnerProfile = null;
+          if (p) {
+            const partnerId =
+              p.partnerAId === user.id ? p.partnerBId : p.partnerAId;
             if (partnerId) {
-              const p = await dataStore.getUserById(partnerId);
-              if (!cancelled) setPartner(p);
-
-              const partnerMoods = await dataStore.getMoodEntriesByUser(partnerId);
-              if (!cancelled) setPartnerMood((partnerMoods || [])[0] || null);
-
-              const pCheckin = await dataStore.getLatestCheckinForUser(partnerId);
-              if (!cancelled) setPartnerCheckin(pCheckin);
+              partnerProfile = await getPartnerProfileForUser(user.id);
             }
+          }
+          if (cancelled) return;
+          setPartner(partnerProfile);
 
-            const [userMoods, all, myCheckin, repairs, appreciations] =
-              await Promise.all([
-                dataStore.getMoodEntriesByUser(u.id),
-                dataStore.getAssignmentsByClient(u.id),
-                dataStore.getLatestCheckinForUser(u.id),
-                dataStore.getRepairRequestsForUser(u.id),
-                dataStore.getAppreciationsForUser(u.id),
-              ]);
+          // My data
+          const [myMoods, all, worksheets, myCheckinsList, repairs, apprs, notifs] =
+            await Promise.all([
+              listMyMoodEntries(),
+              listMyAssignments(),
+              listWorksheets(),
+              listPartnerCheckinsForUser(user.id),
+              listRepairRequestsForUser(user.id),
+              listAppreciationsForUser(user.id),
+              listMyNotifications(),
+            ]);
+          if (cancelled) return;
+
+          setUserMood((myMoods || [])[0] || null);
+          setPending((all || []).filter((a) => a.status !== 'completed'));
+          const map = {};
+          (worksheets || []).forEach((w) => { map[w.id] = w; });
+          setWorksheetsById(map);
+          setMyCheckins(myCheckinsList || []);
+          setUserCheckin((myCheckinsList || [])[0] || null);
+          setAppreciations(apprs || []);
+          setUnreadCount((notifs || []).filter((n) => !n.readAt).length);
+
+          // Incoming, still-unacknowledged repair
+          setPendingRepair(
+            (repairs || []).find(
+              (r) => r.toUserId === user.id && r.status === 'sent'
+            ) || null
+          );
+
+          // Latest appreciation received
+          setLatestAppreciation(
+            (apprs || []).find((a) => a.toUserId === user.id) || null
+          );
+
+          // Partner-specific data (only when paired)
+          if (partnerProfile) {
+            const [pMoods, pLatestCheckin] = await Promise.all([
+              listMoodEntries(partnerProfile.id),
+              getLatestPartnerCheckinForUser(partnerProfile.id),
+            ]);
             if (cancelled) return;
-            setUserMood((userMoods || [])[0] || null);
-            setPending((all || []).filter((a) => a.status !== 'completed'));
-            setUserCheckin(myCheckin);
-
-            // Unread incoming repair request (sent to me, awaiting my response)
-            const incomingRepair = (repairs || []).find(
-              (r) => r.toUserId === u.id && r.status === 'sent'
-            );
-            setPendingRepair(incomingRepair || null);
-
-            // Latest appreciation received
-            const latestAp = (appreciations || []).find(
-              (a) => a.toUserId === u.id
-            );
-            setLatestAppreciation(latestAp || null);
+            setPartnerMood((pMoods || [])[0] || null);
+            setPartnerCheckin(pLatestCheckin || null);
+          } else {
+            setPartnerMood(null);
+            setPartnerCheckin(null);
           }
         } catch (e) {
           console.log('[Couples HomeTab] load error', e);
@@ -153,8 +244,10 @@ export default function CouplesHomeTab() {
       return () => {
         cancelled = true;
       };
-    }, [])
+    }, [user?.id])
   );
+
+  const isPaired = !!partner;
 
   const openDrawer = () => navigation.dispatch(DrawerActions.openDrawer());
 
@@ -166,6 +259,11 @@ export default function CouplesHomeTab() {
     });
   };
 
+  const openParent = (screen, params) => {
+    const parent = navigation.getParent?.() || navigation;
+    parent.navigate(screen, params);
+  };
+
   const userName = (user?.name || 'Friend').split(' ')[0];
   const partnerName = (partner?.name || 'Partner').split(' ')[0];
 
@@ -175,13 +273,19 @@ export default function CouplesHomeTab() {
 
   const dailyQuestion = QUESTIONS[new Date().getDate() % QUESTIONS.length];
 
-  // Mock: days together
-  const daysTogether = 1247;
-
-  const openParent = (screen, params) => {
-    const parent = navigation.getParent?.() || navigation;
-    parent.navigate(screen, params);
-  };
+  const daysTogether = pairing?.pairedAt
+    ? Math.max(
+        1,
+        Math.floor((Date.now() - new Date(pairing.pairedAt).getTime()) / 86400000)
+      )
+    : 0;
+  const streak = computeStreak(myCheckins);
+  const bondScore = computeBondScore({
+    myCheckin: userCheckin,
+    partnerCheckin,
+    appreciations,
+    repairs: [], // already accounted for in pendingRepair
+  });
 
   const QUICK_ACTIONS = [
     {
@@ -252,29 +356,41 @@ export default function CouplesHomeTab() {
             onPress={() => navigation.navigate('Notifications')}
           >
             <Text style={styles.iconBtnText}>◔</Text>
-            <View style={styles.notifDot} />
+            {unreadCount > 0 && <View style={styles.notifDot} />}
           </TouchableOpacity>
         </View>
 
         {/* Connection card — refined editorial style */}
         <View style={styles.connectionCard}>
           <View style={styles.connectionAvatars}>
-            <View
-              style={[
-                styles.avatarBubble,
-                { backgroundColor: user?.profileColor || COLORS.primary },
-              ]}
-            >
-              <Text style={styles.avatarBubbleText}>{user?.avatar || '👤'}</Text>
+            <View style={styles.avatarBubbleWrap}>
+              <Avatar
+                value={user?.avatar}
+                name={user?.name}
+                size={56}
+                backgroundColor={user?.profileColor || COLORS.primary}
+                emojiSize={26}
+              />
+              {user?.accessory && ACCESSORY_EMOJI[user.accessory] ? (
+                <Text style={styles.accessoryBadge}>
+                  {ACCESSORY_EMOJI[user.accessory]}
+                </Text>
+              ) : null}
             </View>
             <Text style={styles.ampersand}>&</Text>
-            <View
-              style={[
-                styles.avatarBubble,
-                { backgroundColor: partner?.profileColor || BLUSH },
-              ]}
-            >
-              <Text style={styles.avatarBubbleText}>{partner?.avatar || '👤'}</Text>
+            <View style={styles.avatarBubbleWrap}>
+              <Avatar
+                value={partner?.avatar}
+                name={partner?.name}
+                size={56}
+                backgroundColor={partner?.profileColor || BLUSH}
+                emojiSize={26}
+              />
+              {partner?.accessory && ACCESSORY_EMOJI[partner.accessory] ? (
+                <Text style={styles.accessoryBadge}>
+                  {ACCESSORY_EMOJI[partner.accessory]}
+                </Text>
+              ) : null}
             </View>
           </View>
 
@@ -282,15 +398,16 @@ export default function CouplesHomeTab() {
             {userName} <Text style={styles.connectionAmpInline}>&</Text> {partnerName}
           </Text>
           <Text style={styles.connectionMeta}>
-            {daysTogether.toLocaleString()} days · {user?.relationshipStatus
-              ? user.relationshipStatus.charAt(0).toUpperCase() +
-                user.relationshipStatus.slice(1)
-              : 'Together'}
+            {isPaired
+              ? `${daysTogether.toLocaleString()} day${daysTogether === 1 ? '' : 's'} paired`
+              : 'Not yet paired'}
           </Text>
 
           <View style={styles.connectionStatRow}>
             <View style={styles.connectionStatItem}>
-              <Text style={styles.connectionStatValue}>78</Text>
+              <Text style={styles.connectionStatValue}>
+                {bondScore == null ? '—' : bondScore}
+              </Text>
               <Text style={styles.connectionStatLabel}>Bond</Text>
             </View>
             <View style={styles.connectionStatDivider} />
@@ -300,20 +417,17 @@ export default function CouplesHomeTab() {
             </View>
             <View style={styles.connectionStatDivider} />
             <View style={styles.connectionStatItem}>
-              <Text style={styles.connectionStatValue}>12</Text>
+              <Text style={styles.connectionStatValue}>{streak}</Text>
               <Text style={styles.connectionStatLabel}>Streak</Text>
             </View>
           </View>
         </View>
 
         {/* Pairing banner — only when not paired */}
-        {!isPaired && (
+        {!isPaired && !loading && (
           <TouchableOpacity
             style={styles.alertBanner}
-            onPress={() => {
-              const parent = navigation.getParent?.() || navigation;
-              parent.navigate('CouplePairing');
-            }}
+            onPress={() => openParent('CouplePairing')}
             activeOpacity={0.85}
           >
             <View style={styles.alertIcon}>
@@ -333,10 +447,7 @@ export default function CouplesHomeTab() {
         {pendingRepair && (
           <TouchableOpacity
             style={[styles.alertBanner, styles.alertBannerRepair]}
-            onPress={() => {
-              const parent = navigation.getParent?.() || navigation;
-              parent.navigate('RepairRequest');
-            }}
+            onPress={() => openParent('RepairRequest')}
             activeOpacity={0.85}
           >
             <View style={[styles.alertIcon, styles.alertIconRepair]}>
@@ -352,14 +463,11 @@ export default function CouplesHomeTab() {
           </TouchableOpacity>
         )}
 
-        {/* Today's check-in status — only if not completed today */}
-        {!isCheckinFromToday(userCheckin) && (
+        {/* Today's check-in status — only if not completed today and paired */}
+        {isPaired && !isToday(userCheckin?.date || userCheckin?.createdAt) && (
           <TouchableOpacity
             style={[styles.alertBanner, styles.alertBannerCheckin]}
-            onPress={() => {
-              const parent = navigation.getParent?.() || navigation;
-              parent.navigate('DailyCheckIn');
-            }}
+            onPress={() => openParent('DailyCheckIn')}
             activeOpacity={0.85}
           >
             <View style={[styles.alertIcon, styles.alertIconCheckin]}>
@@ -368,7 +476,7 @@ export default function CouplesHomeTab() {
             <View style={{ flex: 1 }}>
               <Text style={styles.alertTitle}>Today's check-in is open</Text>
               <Text style={styles.alertSub}>
-                {partnerCheckin && isCheckinFromToday(partnerCheckin)
+                {partnerCheckin && isToday(partnerCheckin.date || partnerCheckin.createdAt)
                   ? `${partnerName} already checked in. Your turn.`
                   : '2 minutes — mood, connection, stress.'}
               </Text>
@@ -380,12 +488,7 @@ export default function CouplesHomeTab() {
         {/* Mood comparison */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionLabel}>TODAY'S PULSE</Text>
-          <TouchableOpacity
-            onPress={() => {
-              const parent = navigation.getParent?.() || navigation;
-              parent.navigate('DailyCheckIn');
-            }}
-          >
+          <TouchableOpacity onPress={() => openParent('DailyCheckIn')}>
             <Text style={styles.sectionAction}>Update</Text>
           </TouchableOpacity>
         </View>
@@ -407,7 +510,7 @@ export default function CouplesHomeTab() {
             </View>
             {userMood ? (
               <>
-                <Text style={styles.moodEmojiLarge}>{MOOD_EMOJIS[userMood.mood]}</Text>
+                <Text style={styles.moodEmojiLarge}>{MOOD_EMOJIS[userMood.mood] || '🙂'}</Text>
                 <Text style={styles.moodStateLabel}>
                   {MOOD_LABEL[userMood.mood] || 'Steady'}
                 </Text>
@@ -434,7 +537,7 @@ export default function CouplesHomeTab() {
             </View>
             {partnerMood ? (
               <>
-                <Text style={styles.moodEmojiLarge}>{MOOD_EMOJIS[partnerMood.mood]}</Text>
+                <Text style={styles.moodEmojiLarge}>{MOOD_EMOJIS[partnerMood.mood] || '🙂'}</Text>
                 <Text style={styles.moodStateLabel}>
                   {MOOD_LABEL[partnerMood.mood] || 'Steady'}
                 </Text>
@@ -442,7 +545,9 @@ export default function CouplesHomeTab() {
             ) : (
               <>
                 <Text style={styles.moodEmojiPlaceholder}>—</Text>
-                <Text style={styles.moodPlaceholderLabel}>Not logged</Text>
+                <Text style={styles.moodPlaceholderLabel}>
+                  {isPaired ? 'Not logged' : 'Not paired'}
+                </Text>
               </>
             )}
           </View>
@@ -537,10 +642,10 @@ export default function CouplesHomeTab() {
           </View>
         ) : (
           pending.slice(0, 2).map((a) => {
-            const w = WORKSHEET_TEMPLATES[a.worksheetId];
+            const w = worksheetsById[a.worksheetId];
             if (!w) return null;
-            const progress = STATUS_PROGRESS[a.status] ?? 0;
-            const cta = a.status === 'in-progress' ? 'Continue' : 'Begin';
+            const progress = a.progress ?? 0;
+            const cta = a.status === 'in_progress' ? 'Continue' : 'Begin';
             return (
               <TouchableOpacity
                 key={a.id}
@@ -550,7 +655,9 @@ export default function CouplesHomeTab() {
               >
                 <View style={styles.continueTopRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.continueCategory}>{w.category.toUpperCase()}</Text>
+                    <Text style={styles.continueCategory}>
+                      {(w.category || 'WORKSHEET').toUpperCase()}
+                    </Text>
                     <Text style={styles.continueTitle} numberOfLines={1}>
                       {w.title}
                     </Text>
@@ -574,15 +681,23 @@ export default function CouplesHomeTab() {
           })
         )}
 
-        {/* Daily Reflection */}
-        <View style={styles.reflectionCard}>
-          <Text style={styles.reflectionEyebrow}>DAILY REFLECTION</Text>
-          <Text style={styles.reflectionText}>
-            Small acts of kindness compound. The little check-ins matter more than the grand gestures.
-          </Text>
-          <View style={styles.reflectionDivider} />
-          <Text style={styles.reflectionAttribution}>A note for both of you</Text>
-        </View>
+        {/* Latest received appreciation */}
+        {latestAppreciation && (
+          <View style={styles.reflectionCard}>
+            <Text style={styles.reflectionEyebrow}>
+              FROM {partnerName.toUpperCase()} · APPRECIATION
+            </Text>
+            <Text style={styles.reflectionText}>
+              "{latestAppreciation.message || latestAppreciation.text}"
+            </Text>
+            <View style={styles.reflectionDivider} />
+            <TouchableOpacity onPress={() => openParent('AppreciationExchange')}>
+              <Text style={styles.reflectionAttribution}>
+                Send one back →
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={{ height: SPACING.xl }} />
       </ScrollView>
@@ -656,14 +771,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.md,
   },
-  avatarBubble: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
+  avatarBubbleWrap: { position: 'relative' },
+  accessoryBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -2,
+    fontSize: 18,
   },
-  avatarBubbleText: { fontSize: 26 },
   ampersand: {
     fontSize: 24,
     fontWeight: '300',
@@ -1067,7 +1181,7 @@ const styles = StyleSheet.create({
   },
   continueCtaArrow: { fontSize: 16, color: INK, fontWeight: '700' },
 
-  /* Reflection */
+  /* Reflection / latest appreciation */
   reflectionCard: {
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.lg,
@@ -1097,8 +1211,8 @@ const styles = StyleSheet.create({
   },
   reflectionAttribution: {
     fontSize: 12,
-    color: COLORS.gray500,
+    color: BLUSH,
     fontStyle: 'italic',
-    fontWeight: '500',
+    fontWeight: '600',
   },
 });

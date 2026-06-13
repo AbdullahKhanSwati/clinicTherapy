@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import useSafeGoBack from '../hooks/useSafeGoBack';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/colors';
-import dataStore from '../utils/dataStore';
+import { getCurrentProfile, listCopingTools } from '../services/api';
 
 const TYPE_EMOJI = {
   breathing: '🌬️',
@@ -60,15 +61,15 @@ const TOOLS = [
 ];
 
 export default function CopingToolboxScreen({ navigation }) {
+  const goBack = useSafeGoBack();
   const [customTools, setCustomTools] = useState([]);
 
   useEffect(() => {
     (async () => {
       try {
-        await dataStore.initialize();
         const [u, tools] = await Promise.all([
-          dataStore.getCurrentUser(),
-          dataStore.getCopingTools(),
+          getCurrentProfile(),
+          listCopingTools(),
         ]);
         const role = u?.role;
         const filtered = (tools || []).filter(
@@ -90,7 +91,7 @@ export default function CopingToolboxScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={8}>
+        <TouchableOpacity onPress={() => goBack()} hitSlop={8}>
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Coping Toolbox</Text>
@@ -135,8 +136,10 @@ export default function CopingToolboxScreen({ navigation }) {
           <>
             <Text style={styles.sectionLabel}>MORE FROM YOUR THERAPIST</Text>
             {customTools.map((tool) => {
-              const emoji = TYPE_EMOJI[tool.type] || '🧘';
-              const color = TYPE_COLOR[tool.type] || '#F2EEFF';
+              // DB exposes the tool's type as `category`; mapper aliases.
+              const kind = tool.category || tool.type;
+              const emoji = TYPE_EMOJI[kind] || '🧘';
+              const color = TYPE_COLOR[kind] || '#F2EEFF';
               return (
                 <TouchableOpacity
                   key={tool.id}

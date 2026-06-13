@@ -12,11 +12,25 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import useSafeGoBack from '../hooks/useSafeGoBack';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
-import dataStore from '../utils/dataStore';
+import {
+  getCurrentProfile,
+  getCurrentUserId,
+  listMyJournalEntries,
+  getJournalEntry,
+  createJournalEntry,
+  updateJournalEntry,
+  deleteJournalEntry,
+} from '../services/api';
+
+const buildBody = (title, content) =>
+  title?.trim()
+    ? `${title.trim()}\n\n${content || ''}`
+    : (content || '');
 
 export default function JournalScreen({ navigation, route }) {
+  const goBack = useSafeGoBack();
   const { entryId: routeEntryId } = route.params || {};
   const [isEditingEntry, setIsEditingEntry] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState(routeEntryId || null);
@@ -43,16 +57,15 @@ export default function JournalScreen({ navigation, route }) {
     const loadData = async () => {
       try {
         setLoading(true);
-        await dataStore.initialize();
-
-        const user = await dataStore.getCurrentUser();
+        const [user, allEntries] = await Promise.all([
+          getCurrentProfile(),
+          listMyJournalEntries(),
+        ]);
         setCurrentUser(user);
-
-        const allEntries = await dataStore.getJournalEntriesByUser(user?.id);
-        setEntries(allEntries);
+        setEntries(allEntries || []);
 
         if (routeEntryId) {
-          const entry = await dataStore.getJournalEntry(routeEntryId);
+          const entry = await getJournalEntry(routeEntryId);
           if (entry) {
             setTitle(entry.title);
             setContent(entry.content);
@@ -62,7 +75,7 @@ export default function JournalScreen({ navigation, route }) {
           }
         }
       } catch (error) {
-        console.error('[v0] Error loading journal:', error);
+        console.error('[Journal] load error', error);
       } finally {
         setLoading(false);
       }
@@ -78,22 +91,14 @@ export default function JournalScreen({ navigation, route }) {
     }
 
     try {
+      const body = buildBody(title, content);
       if (editingEntryId) {
-        await dataStore.updateJournalEntry(editingEntryId, {
-          title,
-          content,
-          mood,
-          updatedDate: new Date().toISOString(),
-        });
+        await updateJournalEntry(editingEntryId, { body, mood });
         Alert.alert('Success', 'Entry updated!');
       } else {
-        await dataStore.createJournalEntry({
-          userId: currentUser?.id,
-          title,
-          content,
-          mood,
-          date: new Date().toISOString(),
-        });
+        const userId = currentUser?.id || (await getCurrentUserId());
+        if (!userId) throw new Error('Not signed in.');
+        await createJournalEntry({ userId, body, mood });
         Alert.alert('Success', 'Entry saved!');
       }
 
@@ -103,11 +108,11 @@ export default function JournalScreen({ navigation, route }) {
       setEditingEntryId(null);
       setIsEditingEntry(false);
 
-      const allEntries = await dataStore.getJournalEntriesByUser(currentUser?.id);
-      setEntries(allEntries);
+      const allEntries = await listMyJournalEntries();
+      setEntries(allEntries || []);
     } catch (error) {
-      console.error('[v0] Error saving entry:', error);
-      Alert.alert('Error', 'Failed to save entry. Please try again.');
+      console.error('[Journal] save error', error);
+      Alert.alert('Error', error?.message || 'Failed to save entry. Please try again.');
     }
   };
 
@@ -121,12 +126,13 @@ export default function JournalScreen({ navigation, route }) {
         text: 'Delete',
         onPress: async () => {
           try {
-            await dataStore.deleteJournalEntry(id);
-            const allEntries = await dataStore.getJournalEntriesByUser(currentUser?.id);
-            setEntries(allEntries);
+            await deleteJournalEntry(id);
+            const allEntries = await listMyJournalEntries();
+            setEntries(allEntries || []);
             Alert.alert('Success', 'Entry deleted!');
           } catch (error) {
-            console.error('[v0] Error deleting entry:', error);
+            console.error('[Journal] delete error', error);
+            Alert.alert('Error', error?.message || 'Failed to delete entry.');
           }
         },
         style: 'destructive',
@@ -250,7 +256,7 @@ export default function JournalScreen({ navigation, route }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => goBack()}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.title}>My Journal</Text>

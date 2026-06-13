@@ -14,7 +14,19 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
+import { useAuth } from '../../../contexts/AuthContext';
+import {
+  listMyMoodEntries,
+  listMyJournalEntries,
+  listMyAssignments,
+  listMoodEntries,
+  getActivePairingForUser,
+  getPartnerProfileForUser,
+  listPartnerCheckinsForUser,
+  listRepairRequestsForUser,
+  listAppreciationsForUser,
+  listSharedGoals,
+} from '../../../services/api';
 
 const BLUSH = '#D4536B';
 const INK = '#1A2332';
@@ -34,72 +46,96 @@ const MOOD_SCORE = {
   overwhelmed: 1,
 };
 
-const PARTNER_LOOKUP = {
-  partner1: 'partner2',
-  partner2: 'partner1',
+// Build a Mon..Sun mood-score series from a flat mood-entries list. Each cell
+// holds the average score for that calendar day, or 0 if nothing was logged.
+const buildWeek = (moods) => {
+  const byDay = new Map();
+  (moods || []).forEach((m) => {
+    if (!m?.date) return;
+    const d = new Date(m.date);
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const arr = byDay.get(key) || [];
+    arr.push(m);
+    byDay.set(key, arr);
+  });
+  const out = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const entries = byDay.get(key) || [];
+    const score =
+      entries.length === 0
+        ? 0
+        : entries.reduce((s, m) => s + (MOOD_SCORE[m.mood] ?? 5), 0) /
+          entries.length;
+    out.push({ day: DAY_LABELS[(d.getDay() + 6) % 7], value: Math.round(score * 10) / 10 });
+  }
+  return out;
 };
-
-const BREAKDOWN = [
-  { id: 'comm', label: 'Communication', score: 82 },
-  { id: 'trust', label: 'Trust', score: 88 },
-  { id: 'intimacy', label: 'Intimacy', score: 70 },
-  { id: 'growth', label: 'Shared Growth', score: 75 },
-];
-
-const GROWTH_AREAS = [
-  {
-    id: 1,
-    title: 'Active Listening',
-    pct: 65,
-    note: 'Up 12% from last month',
-    trend: 'up',
-  },
-  {
-    id: 2,
-    title: 'Conflict Repair',
-    pct: 48,
-    note: 'Practice paused this week',
-    trend: 'flat',
-  },
-  {
-    id: 3,
-    title: 'Gratitude Sharing',
-    pct: 82,
-    note: 'New 14-day streak',
-    trend: 'up',
-  },
-];
 
 export default function CouplesInsightsTab() {
   const navigation = useNavigation();
+  const { profile: user } = useAuth();
+  const [partner, setPartner] = useState(null);
   const [userMoods, setUserMoods] = useState([]);
   const [partnerMoods, setPartnerMoods] = useState([]);
+  const [userCheckins, setUserCheckins] = useState([]);
+  const [partnerCheckins, setPartnerCheckins] = useState([]);
   const [journals, setJournals] = useState([]);
   const [assignments, setAssignments] = useState([]);
+  const [repairs, setRepairs] = useState([]);
+  const [appreciations, setAppreciations] = useState([]);
+  const [goals, setGoals] = useState([]);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
+        if (!user?.id) return;
         try {
-          await dataStore.initialize();
-          const u = await dataStore.getCurrentUser();
-          if (!u || cancelled) return;
+          const pair = await getActivePairingForUser(user.id);
+          let partnerProfile = null;
+          if (pair) {
+            partnerProfile = await getPartnerProfileForUser(user.id);
+          }
+          if (cancelled) return;
+          setPartner(partnerProfile);
 
-          const [m, j, a] = await Promise.all([
-            dataStore.getMoodEntriesByUser(u.id),
-            dataStore.getJournalEntriesByUser(u.id),
-            dataStore.getAssignmentsByClient(u.id),
+          const [m, j, a, myCheckins, repairList, apprs] = await Promise.all([
+            listMyMoodEntries(),
+            listMyJournalEntries(),
+            listMyAssignments(),
+            listPartnerCheckinsForUser(user.id),
+            listRepairRequestsForUser(user.id),
+            listAppreciationsForUser(user.id),
           ]);
           if (cancelled) return;
           setUserMoods(m || []);
           setJournals(j || []);
           setAssignments(a || []);
+          setUserCheckins(myCheckins || []);
+          setRepairs(repairList || []);
+          setAppreciations(apprs || []);
 
-          const partnerId = PARTNER_LOOKUP[u.id];
-          if (partnerId) {
-            const pm = await dataStore.getMoodEntriesByUser(partnerId);
-            if (!cancelled) setPartnerMoods(pm || []);
+          if (partnerProfile) {
+            const [pm, pc] = await Promise.all([
+              listMoodEntries(partnerProfile.id),
+              listPartnerCheckinsForUser(partnerProfile.id),
+            ]);
+            if (cancelled) return;
+            setPartnerMoods(pm || []);
+            setPartnerCheckins(pc || []);
+          } else {
+            setPartnerMoods([]);
+            setPartnerCheckins([]);
+          }
+
+          if (pair?.id) {
+            const g = await listSharedGoals(pair.id);
+            if (!cancelled) setGoals(g || []);
+          } else {
+            setGoals([]);
           }
         } catch (e) {
           console.log('[Couples InsightsTab] load error', e);
@@ -108,37 +144,138 @@ export default function CouplesInsightsTab() {
       return () => {
         cancelled = true;
       };
-    }, [])
+    }, [user?.id])
   );
 
   const openDrawer = () => navigation.dispatch(DrawerActions.openDrawer());
 
-  const userChart = useMemo(() => {
-    const recent = [...userMoods]
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 7)
-      .reverse();
-    return DAY_LABELS.map((d, i) => ({
-      day: d,
-      value: recent[i] ? MOOD_SCORE[recent[i].mood] || 5 : 0,
-    }));
-  }, [userMoods]);
+  const userChart = useMemo(() => buildWeek(userMoods), [userMoods]);
+  const partnerChart = useMemo(() => buildWeek(partnerMoods), [partnerMoods]);
 
-  const partnerChart = useMemo(() => {
-    const recent = [...partnerMoods]
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 7)
-      .reverse();
-    return DAY_LABELS.map((d, i) => ({
-      day: d,
-      value: recent[i] ? MOOD_SCORE[recent[i].mood] || 5 : 0,
-    }));
-  }, [partnerMoods]);
+  // Real "Four Pillars" derived from partner check-ins (mood/connection/stress)
+  // + journal and appreciation flow.
+  const pillars = useMemo(() => {
+    const all = [...(userCheckins || []), ...(partnerCheckins || [])];
+    const last14 = all.filter(
+      (c) =>
+        Date.now() - new Date(c.date || c.createdAt).getTime() < 14 * 86400000
+    );
+    const avgOf = (key) => {
+      const vals = last14.map((c) => c[key]).filter((v) => typeof v === 'number');
+      if (vals.length === 0) return 0;
+      return Math.round((vals.reduce((s, v) => s + v, 0) / vals.length) * 10);
+    };
+
+    // Communication ≈ connection
+    const communication = avgOf('connection');
+    // Trust ≈ inverted stress (lower stress → more trust)
+    const stressAvg = avgOf('stress');
+    const trust = stressAvg ? Math.max(0, 100 - stressAvg) : 0;
+    // Intimacy ≈ appreciation exchange volume in last 30 days (scaled)
+    const recentApps = (appreciations || []).filter(
+      (a) => Date.now() - new Date(a.createdAt).getTime() < 30 * 86400000
+    ).length;
+    const intimacy = Math.min(100, recentApps * 8);
+    // Shared growth ≈ goal progress (average across active goals) + journal cadence
+    const goalAvg =
+      goals.length === 0
+        ? 0
+        : Math.round(
+            goals.reduce((s, g) => s + (g.progress || 0), 0) / goals.length
+          );
+    const journalBoost = Math.min(20, (journals.length || 0) * 2);
+    const growth = Math.min(100, goalAvg + journalBoost);
+
+    return [
+      { id: 'comm', label: 'Communication', score: communication },
+      { id: 'trust', label: 'Trust', score: trust },
+      { id: 'intimacy', label: 'Intimacy', score: intimacy },
+      { id: 'growth', label: 'Shared Growth', score: growth },
+    ];
+  }, [userCheckins, partnerCheckins, appreciations, journals, goals]);
 
   const completedCount = assignments.filter((a) => a.status === 'completed').length;
-  const overallScore = Math.round(
-    BREAKDOWN.reduce((s, b) => s + b.score, 0) / BREAKDOWN.length
-  );
+  const overallScore = pillars.length
+    ? Math.round(pillars.reduce((s, p) => s + p.score, 0) / pillars.length)
+    : 0;
+
+  // Trend: compare current vs previous 7-day average of mood+connection
+  const trend = useMemo(() => {
+    const allCheckins = [...userCheckins, ...partnerCheckins];
+    const last7 = allCheckins.filter(
+      (c) => Date.now() - new Date(c.date || c.createdAt).getTime() < 7 * 86400000
+    );
+    const prev7 = allCheckins.filter((c) => {
+      const t = Date.now() - new Date(c.date || c.createdAt).getTime();
+      return t >= 7 * 86400000 && t < 14 * 86400000;
+    });
+    const avg = (arr) => {
+      const nums = arr.flatMap((c) =>
+        [c.mood, c.connection].filter((v) => typeof v === 'number')
+      );
+      if (nums.length === 0) return 0;
+      return nums.reduce((s, v) => s + v, 0) / nums.length;
+    };
+    const now = avg(last7);
+    const before = avg(prev7);
+    if (now === 0 || before === 0) return 0;
+    return Math.round((now - before) * 10) / 10;
+  }, [userCheckins, partnerCheckins]);
+
+  // Growth Areas derived from real data
+  const growthAreas = useMemo(() => {
+    const openRepairs = repairs.filter((r) => r.status === 'sent').length;
+    const resolvedRepairs = repairs.filter(
+      (r) => r.status === 'acknowledged' || r.status === 'resolved'
+    ).length;
+    const repairTotal = openRepairs + resolvedRepairs;
+    const repairPct =
+      repairTotal === 0 ? 0 : Math.round((resolvedRepairs / repairTotal) * 100);
+
+    const recentApps = appreciations.filter(
+      (a) => Date.now() - new Date(a.createdAt).getTime() < 14 * 86400000
+    ).length;
+    const appPct = Math.min(100, recentApps * 12);
+
+    const goalPct = goals.length
+      ? Math.round(
+          goals.reduce((s, g) => s + (g.progress || 0), 0) / goals.length
+        )
+      : 0;
+
+    return [
+      {
+        id: 1,
+        title: 'Conflict Repair',
+        pct: repairPct,
+        note:
+          repairTotal === 0
+            ? 'No repair requests sent yet'
+            : `${resolvedRepairs} of ${repairTotal} resolved`,
+        trend: repairPct >= 60 ? 'up' : repairPct > 0 ? 'flat' : 'flat',
+      },
+      {
+        id: 2,
+        title: 'Appreciation Flow',
+        pct: appPct,
+        note:
+          recentApps === 0
+            ? 'Send one to get started'
+            : `${recentApps} in the last 14 days`,
+        trend: recentApps >= 5 ? 'up' : recentApps > 0 ? 'flat' : 'flat',
+      },
+      {
+        id: 3,
+        title: 'Shared Goals',
+        pct: goalPct,
+        note:
+          goals.length === 0
+            ? 'No goals set yet'
+            : `Across ${goals.length} goal${goals.length === 1 ? '' : 's'}`,
+        trend: goalPct >= 50 ? 'up' : goalPct > 0 ? 'flat' : 'flat',
+      },
+    ];
+  }, [repairs, appreciations, goals]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -163,23 +300,46 @@ export default function CouplesInsightsTab() {
             <Text style={styles.scoreValue}>{overallScore}</Text>
             <Text style={styles.scoreOutOf}>/100</Text>
           </View>
-          <View style={styles.scoreTrendRow}>
-            <View style={styles.scoreTrendBadge}>
-              <Text style={styles.scoreTrendArrow}>↑</Text>
-              <Text style={styles.scoreTrendText}>5 from last week</Text>
+          {trend !== 0 && (
+            <View style={styles.scoreTrendRow}>
+              <View
+                style={[
+                  styles.scoreTrendBadge,
+                  trend < 0 && { backgroundColor: 'rgba(212,83,107,0.25)' },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.scoreTrendArrow,
+                    trend < 0 && { color: '#FBB7BF' },
+                  ]}
+                >
+                  {trend > 0 ? '↑' : '↓'}
+                </Text>
+                <Text
+                  style={[
+                    styles.scoreTrendText,
+                    trend < 0 && { color: '#FBB7BF' },
+                  ]}
+                >
+                  {Math.abs(trend)} from last week
+                </Text>
+              </View>
             </View>
-          </View>
+          )}
           <Text style={styles.scoreCaption}>
             {overallScore >= 80
               ? 'Strong and growing. Keep nurturing the small daily moments.'
               : overallScore >= 60
               ? 'Solid foundation. Small consistent habits compound over time.'
-              : 'Worth investing in. Start with one practice this week.'}
+              : overallScore > 0
+              ? 'Worth investing in. Start with one practice this week.'
+              : 'Log a few check-ins to start tracking your bond.'}
           </Text>
 
           <View style={styles.scoreFooter}>
             <View style={styles.scoreFooterCol}>
-              <Text style={styles.scoreFooterValue}>{userMoods.length}</Text>
+              <Text style={styles.scoreFooterValue}>{userCheckins.length}</Text>
               <Text style={styles.scoreFooterLabel}>CHECK-INS</Text>
             </View>
             <View style={styles.scoreFooterDivider} />
@@ -198,12 +358,12 @@ export default function CouplesInsightsTab() {
         {/* Breakdown */}
         <Text style={styles.sectionLabel}>FOUR PILLARS</Text>
         <View style={styles.card}>
-          {BREAKDOWN.map((b, i) => (
+          {pillars.map((b, i) => (
             <View
               key={b.id}
               style={[
                 styles.breakdownRow,
-                i < BREAKDOWN.length - 1 && styles.breakdownRowBorder,
+                i < pillars.length - 1 && styles.breakdownRowBorder,
               ]}
             >
               <View style={{ flex: 1 }}>
@@ -232,16 +392,18 @@ export default function CouplesInsightsTab() {
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: BLUSH }]} />
-              <Text style={styles.legendText}>Partner</Text>
+              <Text style={styles.legendText}>
+                {partner ? partner.name?.split(' ')[0] || 'Partner' : 'Partner'}
+              </Text>
             </View>
           </View>
 
           <View style={styles.chartWrap}>
             {DAY_LABELS.map((d, i) => {
-              const youH = userChart[i].value ? (userChart[i].value / 10) * 100 : 4;
-              const partnerH = partnerChart[i].value
-                ? (partnerChart[i].value / 10) * 100
-                : 4;
+              const youVal = userChart[i]?.value || 0;
+              const partnerVal = partnerChart[i]?.value || 0;
+              const youH = youVal ? (youVal / 10) * 100 : 4;
+              const partnerH = partnerVal ? (partnerVal / 10) * 100 : 4;
               return (
                 <View key={i} style={styles.chartCol}>
                   <View style={styles.chartBarSlot}>
@@ -251,9 +413,7 @@ export default function CouplesInsightsTab() {
                           styles.dualBar,
                           {
                             height: `${youH}%`,
-                            backgroundColor: userChart[i].value
-                              ? INK
-                              : COLORS.gray100,
+                            backgroundColor: youVal ? INK : COLORS.gray100,
                           },
                         ]}
                       />
@@ -262,9 +422,7 @@ export default function CouplesInsightsTab() {
                           styles.dualBar,
                           {
                             height: `${partnerH}%`,
-                            backgroundColor: partnerChart[i].value
-                              ? BLUSH
-                              : COLORS.gray100,
+                            backgroundColor: partnerVal ? BLUSH : COLORS.gray100,
                           },
                         ]}
                       />
@@ -280,12 +438,12 @@ export default function CouplesInsightsTab() {
         {/* Growth Areas */}
         <Text style={styles.sectionLabel}>GROWTH AREAS</Text>
         <View style={styles.card}>
-          {GROWTH_AREAS.map((g, i) => (
+          {growthAreas.map((g, i) => (
             <View
               key={g.id}
               style={[
                 styles.growthRow,
-                i < GROWTH_AREAS.length - 1 && styles.growthRowBorder,
+                i < growthAreas.length - 1 && styles.growthRowBorder,
               ]}
             >
               <View style={{ flex: 1 }}>

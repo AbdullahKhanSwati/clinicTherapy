@@ -11,7 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import {
   COLORS,
@@ -19,7 +19,10 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
+import {
+  getCurrentUserId,
+  createWorksheet,
+} from '../../services/api';
 
 const INK = '#1A2332';
 const ACCENT = '#0891B2';
@@ -53,16 +56,20 @@ const newStep = () => ({
   required: true,
 });
 
-export default function CreateWorksheetScreen({ navigation }) {
+export default function CreateWorksheetScreen({ route, navigation }) {
+  const initialAudience = route?.params?.defaultAudience || 'teen';
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
-  const [targetAudience, setTargetAudience] = useState('teen');
+  const [targetAudience, setTargetAudience] = useState(
+    initialAudience === 'all' ? 'teen' : initialAudience
+  );
   const [difficulty, setDifficulty] = useState('beginner');
   const [estimatedTime, setEstimatedTime] = useState('10 mins');
   const [introduction, setIntroduction] = useState('');
   const [steps, setSteps] = useState([newStep()]);
   const [submitting, setSubmitting] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const updateStep = (localId, patch) => {
     setSteps((prev) =>
@@ -94,8 +101,7 @@ export default function CreateWorksheetScreen({ navigation }) {
     if (!isValid || submitting) return;
     try {
       setSubmitting(true);
-      const therapist = await dataStore.getCurrentUser();
-      const wsId = `ws_custom_${Date.now()}`;
+      const createdBy = await getCurrentUserId();
 
       const finalSteps = steps.map((s, i) => {
         const stepId = `step${i + 1}`;
@@ -115,28 +121,32 @@ export default function CreateWorksheetScreen({ navigation }) {
         };
       });
 
-      const payload = {
-        id: wsId,
-        title: title.trim(),
+      // Everything beyond title/description/audience is stored inside the JSONB content column.
+      const content = {
+        type: 'builder',
         category: category.trim(),
-        description: description.trim(),
-        targetAudience,
         difficulty,
         estimatedTime: estimatedTime.trim() || '10 mins',
         introduction: introduction.trim() || description.trim(),
         steps: finalSteps,
         completionMessage: 'Great work — your responses are saved.',
-        createdBy: therapist?.id || 'therapist1',
       };
 
-      await dataStore.addCustomWorksheet(payload);
+      await createWorksheet({
+        title: title.trim(),
+        description: description.trim(),
+        audience: targetAudience,
+        programId: null,
+        content,
+        createdBy,
+      });
 
       Alert.alert('Worksheet Created', `"${title.trim()}" is now available.`, [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
     } catch (e) {
       console.log('[CreateWorksheet] save error', e);
-      Alert.alert('Error', 'Failed to save. Please try again.');
+      Alert.alert('Error', e?.message || 'Failed to save. Please try again.');
       setSubmitting(false);
     }
   };
@@ -324,7 +334,7 @@ export default function CreateWorksheetScreen({ navigation }) {
           <View style={{ height: SPACING.xl }} />
         </ScrollView>
 
-        <View style={styles.submitBar}>
+        <View style={[styles.submitBar, { paddingBottom: insets.bottom + SPACING.md }]}>
           <TouchableOpacity
             style={[
               styles.submitBtn,

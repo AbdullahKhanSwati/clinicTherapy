@@ -18,7 +18,13 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
+import {
+  listCouplePairings,
+  getProfileById,
+  listSharedGoals,
+  upsertSharedGoal,
+  deleteSharedGoal,
+} from '../../services/api';
 
 const INK = '#1A2332';
 const BLUSH = '#D4536B';
@@ -51,15 +57,14 @@ export default function CoupleSharedGoalsScreen({ route, navigation }) {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      await dataStore.initialize();
-      const all = await dataStore.getCouplePairings();
+      const all = await listCouplePairings();
       const p = all.find((x) => x.id === pairingId);
       setPairing(p || null);
       if (p) {
         const [a, b, list] = await Promise.all([
-          dataStore.getUserById(p.partnerAId),
-          p.partnerBId ? dataStore.getUserById(p.partnerBId) : null,
-          dataStore.getSharedGoalsForPairing(p.id),
+          getProfileById(p.partnerAId),
+          p.partnerBId ? getProfileById(p.partnerBId) : null,
+          listSharedGoals(p.id),
         ]);
         setPartnerA(a);
         setPartnerB(b);
@@ -82,11 +87,12 @@ export default function CoupleSharedGoalsScreen({ route, navigation }) {
     if (!newTitle.trim() || !pairing) return;
     try {
       setSubmitting(true);
-      await dataStore.addSharedGoal(
-        pairing.id,
-        newTitle.trim(),
-        newDescription.trim()
-      );
+      await upsertSharedGoal({
+        pairingId: pairing.id,
+        title: newTitle.trim(),
+        description: newDescription.trim(),
+        progress: 0,
+      });
       setNewTitle('');
       setNewDescription('');
       await load();
@@ -103,10 +109,18 @@ export default function CoupleSharedGoalsScreen({ route, navigation }) {
     if (!goal) return;
     const next = Math.max(0, Math.min(100, (goal.progress || 0) + delta));
     try {
-      await dataStore.updateSharedGoalProgress(goalId, next);
+      await upsertSharedGoal({
+        id: goalId,
+        pairingId: goal.pairingId,
+        title: goal.title,
+        description: goal.description,
+        progress: next,
+        completedAt: next >= 100 ? new Date().toISOString() : null,
+      });
       await load();
     } catch (e) {
       console.log('[CoupleSharedGoals] progress', e);
+      Alert.alert('Error', e?.message || 'Could not update progress.');
     }
   };
 
@@ -121,13 +135,11 @@ export default function CoupleSharedGoalsScreen({ route, navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              const all = await dataStore.getSharedGoals();
-              await dataStore.setSharedGoals(
-                all.filter((g) => g.id !== goal.id)
-              );
+              await deleteSharedGoal(goal.id);
               await load();
             } catch (e) {
               console.log('[CoupleSharedGoals] delete', e);
+              Alert.alert('Error', e?.message || 'Could not delete goal.');
             }
           },
         },
@@ -306,11 +318,25 @@ export default function CoupleSharedGoalsScreen({ route, navigation }) {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.progressBtn, styles.progressBtnComplete]}
-                  onPress={() =>
-                    dataStore
-                      .updateSharedGoalProgress(g.id, 100)
-                      .then(() => load())
-                  }
+                  onPress={async () => {
+                    try {
+                      await upsertSharedGoal({
+                        id: g.id,
+                        pairingId: g.pairingId,
+                        title: g.title,
+                        description: g.description,
+                        progress: 100,
+                        completedAt: new Date().toISOString(),
+                      });
+                      await load();
+                    } catch (e) {
+                      console.log('[CoupleSharedGoals] complete', e);
+                      Alert.alert(
+                        'Error',
+                        e?.message || 'Could not mark goal as complete.'
+                      );
+                    }
+                  }}
                   activeOpacity={0.7}
                 >
                   <Feather name="check" size={14} color={SUCCESS} />

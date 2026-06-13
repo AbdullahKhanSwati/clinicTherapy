@@ -13,7 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/colors';
 import { WORKSHEET_TEMPLATES } from '../../data/worksheetTemplates';
 import dataStore from '../../utils/dataStore';
-import { useAuth } from '../../../App';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function ChildDashboard({ navigation }) {
   const { signOut } = useAuth();

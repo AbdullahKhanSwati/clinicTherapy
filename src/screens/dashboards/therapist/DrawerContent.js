@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   View,
   StyleSheet,
@@ -14,8 +14,19 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
-import { useAuth } from '../../../../App';
+import { useAuth } from '../../../contexts/AuthContext';
+import Avatar from '../../../components/Avatar';
+
+const ACCESSORY_EMOJI = {
+  none: '',
+  crown: '👑',
+  star: '⭐',
+  sparkles: '✨',
+  flower: '🌸',
+  heart: '💖',
+  hat: '🎩',
+  rainbow: '🌈',
+};
 
 const INK = '#1A2332';
 const ACCENT = COLORS.primary;
@@ -53,20 +64,8 @@ const SETTINGS_LINKS = [
 ];
 
 export default function TherapistDrawerContent({ navigation }) {
-  const { signOut } = useAuth();
-  const [therapist, setTherapist] = useState(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        await dataStore.initialize();
-        const u = await dataStore.getCurrentUser();
-        setTherapist(u);
-      } catch (e) {
-        console.log('[Therapist DrawerContent] load error', e);
-      }
-    })();
-  }, []);
+  // Live profile from AuthContext — updates instantly when avatar changes.
+  const { signOut, profile: therapist } = useAuth();
 
   const goToTab = (tabName) => {
     navigation.navigate('DashboardTabs', { screen: tabName });
@@ -92,10 +91,18 @@ export default function TherapistDrawerContent({ navigation }) {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Profile header */}
         <View style={styles.profileBlock}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {(therapist?.name || 'D').charAt(0).toUpperCase()}
-            </Text>
+          <View style={styles.avatarWrap}>
+            <Avatar
+              value={therapist?.avatar}
+              name={therapist?.name || 'D'}
+              size={64}
+              backgroundColor={therapist?.profileColor || INK}
+            />
+            {therapist?.accessory && ACCESSORY_EMOJI[therapist.accessory] ? (
+              <Text style={styles.accessoryBadge}>
+                {ACCESSORY_EMOJI[therapist.accessory]}
+              </Text>
+            ) : null}
           </View>
           <Text style={styles.name}>{therapist?.name || 'Doctor'}</Text>
           <Text style={styles.email}>{therapist?.email || ''}</Text>
@@ -208,6 +215,16 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray100,
+  },
+  avatarWrap: {
+    position: 'relative',
+    marginBottom: SPACING.md,
+  },
+  accessoryBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -4,
+    fontSize: 22,
   },
   avatar: {
     width: 64,

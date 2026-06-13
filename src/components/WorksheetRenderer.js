@@ -24,32 +24,49 @@ import TherapistInsight from './QuestionTypes/TherapistInsight';
 export default function WorksheetRenderer({
   worksheet,
   onComplete,
+  onAutoSave,
   initialResponses = {},
+  initialStepIndex = 0,
 }) {
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [currentStepIndex, setCurrentStepIndex] = useState(initialStepIndex);
   const [responses, setResponses] = useState(initialResponses);
   const [completionModalVisible, setCompletionModalVisible] = useState(false);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
 
   const steps = worksheet.steps || [];
   const currentStep = steps[currentStepIndex];
-  const progress = ((currentStepIndex + 1) / steps.length) * 100;
+  const progress = steps.length > 0
+    ? ((currentStepIndex + 1) / steps.length) * 100
+    : 0;
 
-  // Auto-save responses
+  // Defensive: caller should never pass an empty worksheet now, but if it
+  // happens, render a friendly fallback instead of crashing on `currentStep.title`.
+  if (!currentStep) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: SPACING.lg }}>
+          <Text style={styles.errorText}>This worksheet has no steps yet.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Debounced auto-save. Persists the current responses + step index to the
+  // parent (WorksheetScreen) which writes them to Supabase as a DRAFT (not
+  // marked completed). Triggers when responses or step index change.
   useEffect(() => {
-    const saveResponses = async () => {
-      if (Object.keys(responses).length > 0) {
+    if (!onAutoSave) return;
+    if (!responses || Object.keys(responses).length === 0) return;
+    const timer = setTimeout(async () => {
+      try {
         setIsAutoSaving(true);
-        // In a real app, this would save to the backend
-        // For now, it just logs to show it's happening
-        console.log('[v0] Auto-saving responses:', responses);
+        await onAutoSave(responses, currentStepIndex);
+      } finally {
         setIsAutoSaving(false);
       }
-    };
-
-    const timer = setTimeout(saveResponses, 2000);
+    }, 1500);
     return () => clearTimeout(timer);
-  }, [responses]);
+  }, [responses, currentStepIndex, onAutoSave]);
 
   const handleResponse = (value) => {
     if (currentStep && currentStep.saveKey) {
@@ -90,21 +107,22 @@ export default function WorksheetRenderer({
   const handleComplete = () => {
     setCompletionModalVisible(false);
     if (onComplete) {
-      onComplete(responses);
+      onComplete(responses, false, currentStepIndex);
     }
   };
 
   const handleSkip = () => {
     Alert.alert(
       'Exit Worksheet',
-      'Your progress will be saved. You can continue later.',
+      'Your progress will be saved. You can continue later from where you left off.',
       [
         { text: 'Cancel', onPress: () => {}, style: 'cancel' },
         {
           text: 'Exit',
           onPress: () => {
             if (onComplete) {
-              onComplete(responses, true); // true indicates it was skipped
+              // skipped=true → parent saves as a draft, not as completed.
+              onComplete(responses, true, currentStepIndex);
             }
           },
           style: 'destructive',

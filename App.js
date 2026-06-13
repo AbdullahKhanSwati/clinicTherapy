@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useMemo, createContext, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
@@ -33,14 +32,17 @@ import GroundingExerciseScreen from './src/screens/coping/GroundingExerciseScree
 import VisualizationScreen from './src/screens/coping/VisualizationScreen';
 import AffirmationsScreen from './src/screens/coping/AffirmationsScreen';
 import AvatarCustomizerScreen from './src/screens/AvatarCustomizerScreen';
+
+import { supabase, getCurrentProfile } from './src/lib/supabase';
 import dataStore from './src/utils/dataStore';
-import { tryCatch } from './src/utils/safeOperations';
 import { setupAndroidChannel } from './src/utils/notifications';
+import { AuthContext, useAuth } from './src/contexts/AuthContext';
+
+// Re-export so old imports (`from '../../App'`) keep working during migration.
+// New code should import from './src/contexts/AuthContext' directly.
+export { useAuth };
 
 const Stack = createNativeStackNavigator();
-
-const AuthContext = createContext(null);
-export const useAuth = () => useContext(AuthContext);
 
 const ROLE_TO_SCREEN = {
   child: 'ChildDashboard',
@@ -48,6 +50,7 @@ const ROLE_TO_SCREEN = {
   couples: 'CouplesDashboard',
   family: 'FamilyDashboard',
   therapist: 'TherapistDashboard',
+  admin: 'TherapistDashboard',
 };
 
 const ROLE_TO_COMPONENT = {
@@ -56,101 +59,124 @@ const ROLE_TO_COMPONENT = {
   couples: CouplesDashboard,
   family: FamilyDashboard,
   therapist: TherapistDashboard,
+  admin: TherapistDashboard,
 };
 
 export default function App() {
-  const [authState, setAuthState] = useState({
-    isLoading: true,
-    userToken: null,
-    userRole: null,
-  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+
+  const loadProfile = useCallback(async () => {
+    try {
+      const p = await getCurrentProfile();
+      setProfile(p);
+      if (p) {
+        try { await dataStore.setCurrentUser(p); } catch (_) {}
+      }
+    } catch (e) {
+      console.log('[App] loadProfile error', e);
+      setProfile(null);
+    }
+  }, []);
 
   useEffect(() => {
-    const bootstrapAsync = async () => {
+    let mounted = true;
+
+    const bootstrap = async () => {
       try {
         await setupAndroidChannel();
         await dataStore.initialize();
-
-        const token = await AsyncStorage.getItem('userToken');
-        const role = await AsyncStorage.getItem('userRole');
-
-        if (!token) {
-          await AsyncStorage.setItem('userToken', 'demo-token');
-          await AsyncStorage.setItem('userRole', 'child');
-
-          const child1 = {
-            id: 'child1',
-            name: 'Sophie',
-            email: 'sophie@example.com',
-            role: 'child',
-            age: 8,
-          };
-          await dataStore.setCurrentUser(child1);
-        }
-
-        setAuthState({
-          isLoading: false,
-          userToken: token || 'demo-token',
-          userRole: role || 'child',
-        });
+        const { data } = await supabase.auth.getSession();
+        if (!mounted) return;
+        setSession(data?.session ?? null);
+        if (data?.session) await loadProfile();
       } catch (e) {
-        console.log('[v0] Bootstrap error:', e);
-        setAuthState({ isLoading: false, userToken: null, userRole: null });
+        console.log('[App] bootstrap error', e);
+      } finally {
+        if (mounted) setIsLoading(false);
       }
     };
-    bootstrapAsync();
-  }, []);
 
-  const linkRoleToMockUser = useCallback(async (role) => {
-    const ROLE_TO_MOCK_ID = {
-      child: 'child1',
-      teen: 'teen1',
-      couples: 'partner1',
-      family: 'parent1',
-      therapist: 'therapist1',
+    bootstrap();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, sess) => {
+      setSession(sess);
+      if (sess) {
+        loadProfile();
+      } else {
+        setProfile(null);
+        try { dataStore.setCurrentUser(null); } catch (_) {}
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription?.subscription?.unsubscribe?.();
     };
-    const mockId = ROLE_TO_MOCK_ID[role];
-    if (!mockId) return;
-    try {
-      const mockUser = await dataStore.getUserById(mockId);
-      if (mockUser) await dataStore.setCurrentUser(mockUser);
-    } catch (e) {
-      console.log('[App] linkRoleToMockUser error', e);
-    }
+  }, [loadProfile]);
+
+  const signIn = useCallback(async ({ email, password }) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) throw error;
+    return data;
   }, []);
 
-  const signIn = useCallback(async ({ token, role, email }) => {
-    await AsyncStorage.setItem('userToken', token);
-    if (role) await AsyncStorage.setItem('userRole', role);
-    if (email) await AsyncStorage.setItem('userEmail', email);
-    if (role) await linkRoleToMockUser(role);
-    setAuthState({ isLoading: false, userToken: token, userRole: role || null });
-  }, [linkRoleToMockUser]);
-
-  const setRole = useCallback(async (role) => {
-    await AsyncStorage.setItem('userRole', role);
-    await linkRoleToMockUser(role);
-    setAuthState((prev) => ({ ...prev, userRole: role }));
-  }, [linkRoleToMockUser]);
+  const signUp = useCallback(async ({ email, password, metadata }) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: metadata || {} },
+    });
+    if (error) throw error;
+    return data;
+  }, []);
 
   const signOut = useCallback(async () => {
-    await AsyncStorage.multiRemove(['userToken', 'userRole', 'userEmail']);
-    try {
-      await dataStore.setCurrentUser(null);
-    } catch (e) {
-      // ignore
-    }
-    setAuthState({ isLoading: false, userToken: null, userRole: null });
+    await supabase.auth.signOut();
+    setSession(null);
+    setProfile(null);
   }, []);
 
+  const refreshProfile = useCallback(async () => {
+    await loadProfile();
+  }, [loadProfile]);
+
+  const setRole = useCallback(async (role) => {
+    if (!session?.user) return;
+    const { error } = await supabase
+      .from('profiles')
+      .update({ role })
+      .eq('id', session.user.id);
+    if (error) {
+      console.log('[App] setRole error', error);
+      return;
+    }
+    await loadProfile();
+  }, [session, loadProfile]);
+
   const authContext = useMemo(
-    () => ({ signIn, signOut, setRole, userRole: authState.userRole }),
-    [signIn, signOut, setRole, authState.userRole]
+    () => ({
+      session,
+      profile,
+      userRole: profile?.role || null,
+      signIn,
+      signUp,
+      signOut,
+      setRole,
+      refreshProfile,
+    }),
+    [session, profile, signIn, signUp, signOut, setRole, refreshProfile]
   );
 
-  if (authState.isLoading) {
+  if (isLoading) {
     return <SplashScreen />;
   }
+
+  const role = profile?.role;
 
   return (
     <SafeAreaProvider>
@@ -164,19 +190,19 @@ export default function App() {
                 contentStyle: { backgroundColor: '#FFFFFF' },
               }}
             >
-              {authState.userToken == null ? (
+              {!session ? (
                 <>
                   <Stack.Screen name="Welcome" component={WelcomeScreen} />
                   <Stack.Screen name="Login" component={LoginScreen} />
                   <Stack.Screen name="Register" component={RegisterScreen} />
                 </>
-              ) : !authState.userRole ? (
+              ) : !role ? (
                 <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />
               ) : (
                 <>
                   <Stack.Screen
-                    name={ROLE_TO_SCREEN[authState.userRole] || 'ChildDashboard'}
-                    component={ROLE_TO_COMPONENT[authState.userRole] || ChildDashboard}
+                    name={ROLE_TO_SCREEN[role] || 'ChildDashboard'}
+                    component={ROLE_TO_COMPONENT[role] || ChildDashboard}
                   />
                   <Stack.Screen name="Worksheet" component={WorksheetScreen} />
                   <Stack.Screen name="MoodCheckIn" component={MoodCheckInScreen} />

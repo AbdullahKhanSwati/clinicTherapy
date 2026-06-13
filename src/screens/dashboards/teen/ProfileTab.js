@@ -15,8 +15,13 @@ import {
   BORDER_RADIUS,
   SHADOWS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
-import { useAuth } from '../../../../App';
+import {
+  listMyMoodEntries,
+  listMyJournalEntries,
+  listMyAssignments,
+} from '../../../services/api';
+import { useAuth } from '../../../contexts/AuthContext';
+import Avatar from '../../../components/Avatar';
 
 const ACCESSORY_EMOJI = {
   none: '',
@@ -31,8 +36,9 @@ const ACCESSORY_EMOJI = {
 
 export default function TeenProfileTab() {
   const navigation = useNavigation();
-  const { signOut } = useAuth();
-  const [user, setUser] = useState(null);
+  // Profile comes from AuthContext so avatar/name updates are reflected
+  // instantly. Stats are still fetched locally on focus.
+  const { signOut, profile: user } = useAuth();
   const [stats, setStats] = useState({ moods: 0, journals: 0, completed: 0 });
 
   useFocusEffect(
@@ -40,23 +46,17 @@ export default function TeenProfileTab() {
       let cancelled = false;
       (async () => {
         try {
-          await dataStore.initialize();
-          const u = await dataStore.getCurrentUser();
+          const [m, j, a] = await Promise.all([
+            listMyMoodEntries(),
+            listMyJournalEntries(),
+            listMyAssignments(),
+          ]);
           if (cancelled) return;
-          setUser(u);
-          if (u) {
-            const [m, j, a] = await Promise.all([
-              dataStore.getMoodEntriesByUser(u.id),
-              dataStore.getJournalEntriesByUser(u.id),
-              dataStore.getAssignmentsByClient(u.id),
-            ]);
-            if (cancelled) return;
-            setStats({
-              moods: (m || []).length,
-              journals: (j || []).length,
-              completed: (a || []).filter((x) => x.status === 'completed').length,
-            });
-          }
+          setStats({
+            moods: (m || []).length,
+            journals: (j || []).length,
+            completed: (a || []).filter((x) => x.status === 'completed').length,
+          });
         } catch (e) {
           console.log('[Teen ProfileTab] load error', e);
         }
@@ -127,15 +127,13 @@ export default function TeenProfileTab() {
             activeOpacity={0.85}
           >
             <View style={[styles.avatarRing, { backgroundColor: profileColor }]}>
-              <View style={styles.avatarInner}>
-                {user?.avatar ? (
-                  <Text style={styles.avatarChar}>{user.avatar}</Text>
-                ) : (
-                  <Text style={styles.avatarLetter}>
-                    {(user?.name || 'U').charAt(0).toUpperCase()}
-                  </Text>
-                )}
-              </View>
+              <Avatar
+                value={user?.avatar}
+                name={user?.name}
+                size={88}
+                backgroundColor={profileColor}
+                emojiSize={48}
+              />
               {user?.accessory && ACCESSORY_EMOJI[user.accessory] ? (
                 <Text style={styles.accessoryBadge}>
                   {ACCESSORY_EMOJI[user.accessory]}

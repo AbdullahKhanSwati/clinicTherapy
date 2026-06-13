@@ -16,8 +16,15 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
-import { WORKSHEET_TEMPLATES } from '../../data/worksheetTemplates';
+import {
+  listCouplePairings,
+  getProfileById,
+  listPartnerCheckins,
+  listRepairRequests,
+  listSharedGoals,
+  listAssignmentsFor,
+  listWorksheets,
+} from '../../services/api';
 
 const INK = '#1A2332';
 const BLUSH = '#D4536B';
@@ -48,13 +55,13 @@ export default function CoupleDetailScreen({ route, navigation }) {
   const [assignmentsB, setAssignmentsB] = useState([]);
   const [completedA, setCompletedA] = useState([]);
   const [completedB, setCompletedB] = useState([]);
+  const [allWorksheets, setAllWorksheets] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      await dataStore.initialize();
-      const allPairings = await dataStore.getCouplePairings();
+      const allPairings = await listCouplePairings();
       const p = allPairings.find((x) => x.id === pairingId);
       if (!p) {
         setLoading(false);
@@ -62,13 +69,15 @@ export default function CoupleDetailScreen({ route, navigation }) {
       }
       setPairing(p);
 
-      const [a, b, allCheckins, allRepairs, allGoals] = await Promise.all([
-        dataStore.getUserById(p.partnerAId),
-        p.partnerBId ? dataStore.getUserById(p.partnerBId) : null,
-        dataStore.getPartnerCheckins(),
-        dataStore.getRepairRequests(),
-        dataStore.getSharedGoalsForPairing(p.id),
+      const [a, b, allCheckins, allRepairs, allGoals, allWS] = await Promise.all([
+        getProfileById(p.partnerAId),
+        p.partnerBId ? getProfileById(p.partnerBId) : null,
+        listPartnerCheckins(),
+        listRepairRequests(),
+        listSharedGoals(p.id),
+        listWorksheets(),
       ]);
+      setAllWorksheets(allWS || []);
       setPartnerA(a);
       setPartnerB(b);
 
@@ -89,21 +98,27 @@ export default function CoupleDetailScreen({ route, navigation }) {
       );
       setGoals(allGoals || []);
 
+      // Completed worksheets are derived from each partner's assignments
+      // (status === 'completed'). Shape matches the legacy format.
+      const toCompleted = (assignments) =>
+        (assignments || [])
+          .filter((x) => x.status === 'completed')
+          .map((x) => ({
+            id: x.id,
+            userId: x.assigneeId,
+            worksheetId: x.worksheetId,
+            completedDate: x.updatedAt || x.createdAt,
+          }));
+
       if (a) {
-        const [aA, cA] = await Promise.all([
-          dataStore.getAssignmentsByClient(a.id),
-          dataStore.getCompletedWorksheetsByUser(a.id),
-        ]);
+        const aA = await listAssignmentsFor(a.id);
         setAssignmentsA(aA || []);
-        setCompletedA(cA || []);
+        setCompletedA(toCompleted(aA));
       }
       if (b) {
-        const [aB, cB] = await Promise.all([
-          dataStore.getAssignmentsByClient(b.id),
-          dataStore.getCompletedWorksheetsByUser(b.id),
-        ]);
+        const aB = await listAssignmentsFor(b.id);
         setAssignmentsB(aB || []);
-        setCompletedB(cB || []);
+        setCompletedB(toCompleted(aB));
       }
     } catch (e) {
       console.log('[CoupleDetail] load', e);
@@ -118,29 +133,31 @@ export default function CoupleDetailScreen({ route, navigation }) {
     }, [load])
   );
 
+  // Every Gottman worksheet stores its week in `content.week`. We list all
+  // worksheets with programId === 'gottman_12week' and sort by that.
   const gottmanProgress = useMemo(() => {
-    // 12 weeks. A week is "complete" if at least one partner finished it.
+    const gottmanSheets = (allWorksheets || [])
+      .filter((w) => w.programId === 'gottman_12week')
+      .sort(
+        (x, y) => (x.content?.week || 0) - (y.content?.week || 0)
+      );
     const completedIds = new Set([
       ...completedA.map((c) => c.worksheetId),
       ...completedB.map((c) => c.worksheetId),
     ]);
-    const weeks = [];
-    for (let w = 1; w <= 12; w++) {
-      const id = `ws_gottman_w${w}`;
-      const tmpl = WORKSHEET_TEMPLATES[id];
-      weeks.push({
-        week: w,
-        title: tmpl?.title || `Week ${w}`,
-        phase: tmpl?.phase,
-        complete: completedIds.has(id),
-      });
-    }
+    const weeks = gottmanSheets.map((ws) => ({
+      week: ws.content?.week || 0,
+      title: ws.title || `Week ${ws.content?.week || ''}`,
+      phase: ws.content?.phase,
+      complete: completedIds.has(ws.id),
+    }));
+    const total = weeks.length || 12; // fall back to 12 if no sheets seeded yet
     const done = weeks.filter((w) => w.complete).length;
-    return { weeks, done, pct: Math.round((done / 12) * 100) };
-  }, [completedA, completedB]);
+    return { weeks, done, total, pct: Math.round((done / total) * 100) };
+  }, [allWorksheets, completedA, completedB]);
 
   const psydProgress = useMemo(() => {
-    const psydIds = Object.values(WORKSHEET_TEMPLATES)
+    const psydIds = (allWorksheets || [])
       .filter((w) => w.programId === 'psychodynamic_suite')
       .map((w) => w.id);
     const completedIds = new Set([
@@ -153,7 +170,7 @@ export default function CoupleDetailScreen({ route, navigation }) {
       done,
       pct: psydIds.length > 0 ? Math.round((done / psydIds.length) * 100) : 0,
     };
-  }, [completedA, completedB]);
+  }, [allWorksheets, completedA, completedB]);
 
   if (loading) {
     return (
@@ -325,32 +342,30 @@ export default function CoupleDetailScreen({ route, navigation }) {
         </View>
 
         {/* Gottman progress bar */}
-        <Text style={styles.sectionLabel}>12-WEEK GOTTMAN PROGRAM</Text>
-        <View style={styles.programCard}>
-          <View style={styles.programHeader}>
-            <Text style={styles.programLabel}>
-              Week {gottmanProgress.done} of 12
-            </Text>
-            <Text style={styles.programPct}>{gottmanProgress.pct}%</Text>
-          </View>
-          <View style={styles.weeksRow}>
-            {gottmanProgress.weeks.map((w) => (
-              <View
-                key={w.week}
-                style={[
-                  styles.weekTick,
-                  w.complete && styles.weekTickDone,
-                ]}
-              />
-            ))}
-          </View>
-          <View style={styles.phaseLegend}>
-            <Text style={styles.phaseLabel}>1-3 Friendship</Text>
-            <Text style={styles.phaseLabel}>4-6 Conflict</Text>
-            <Text style={styles.phaseLabel}>7-9 Connection</Text>
-            <Text style={styles.phaseLabel}>10-12 Trust</Text>
-          </View>
-        </View>
+        {gottmanProgress.weeks.length > 0 && (
+          <>
+            <Text style={styles.sectionLabel}>GOTTMAN PROGRAM</Text>
+            <View style={styles.programCard}>
+              <View style={styles.programHeader}>
+                <Text style={styles.programLabel}>
+                  Week {gottmanProgress.done} of {gottmanProgress.total}
+                </Text>
+                <Text style={styles.programPct}>{gottmanProgress.pct}%</Text>
+              </View>
+              <View style={styles.weeksRow}>
+                {gottmanProgress.weeks.map((w) => (
+                  <View
+                    key={w.week}
+                    style={[
+                      styles.weekTick,
+                      w.complete && styles.weekTickDone,
+                    ]}
+                  />
+                ))}
+              </View>
+            </View>
+          </>
+        )}
 
         {/* Psychodynamic progress */}
         <Text style={styles.sectionLabel}>PSYCHODYNAMIC SUITE</Text>

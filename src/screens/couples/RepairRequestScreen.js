@@ -17,16 +17,30 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
-import { REPAIR_MESSAGE_TEMPLATES } from '../../data/mockData';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  getActivePairingForUser,
+  getPartnerProfileForUser,
+  listRepairRequestsForUser,
+  sendRepairRequest,
+} from '../../services/api';
 
 const INK = '#1A2332';
 const BLUSH = '#D4536B';
 const CREAM = '#FAF7F2';
 
+// Static quick-message templates — these are UI strings, not DB rows.
+const REPAIR_MESSAGE_TEMPLATES = [
+  { id: 'reconnect',   label: 'I felt hurt and want to reconnect.' },
+  { id: 'talk_later',  label: 'Can we talk later today?' },
+  { id: 'reassurance', label: 'I need reassurance.' },
+  { id: 'apology',     label: 'I need an apology.' },
+  { id: 'understand',  label: 'I want to understand what happened.' },
+];
+
 export default function RepairRequestScreen({ navigation }) {
-  const [user, setUser] = useState(null);
-  const [partnerId, setPartnerId] = useState(null);
+  const { profile: user } = useAuth();
+  const [pairing, setPairing] = useState(null);
   const [partner, setPartner] = useState(null);
   const [recentRequests, setRecentRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,29 +50,36 @@ export default function RepairRequestScreen({ navigation }) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      if (!user?.id) {
+        setLoading(false);
+        return;
+      }
       try {
-        await dataStore.initialize();
-        const u = await dataStore.getCurrentUser();
-        setUser(u);
-        if (u) {
-          const pid = await dataStore.getPartnerIdForUser(u.id);
-          setPartnerId(pid);
-          if (pid) {
-            const p = await dataStore.getUserById(pid);
-            setPartner(p);
-          }
-          const requests = await dataStore.getRepairRequestsForUser(u.id);
-          setRecentRequests(requests.slice(0, 3));
+        const p = await getActivePairingForUser(user.id);
+        if (cancelled) return;
+        setPairing(p);
+        if (p) {
+          const partnerProfile = await getPartnerProfileForUser(user.id);
+          if (cancelled) return;
+          setPartner(partnerProfile);
+          const requests = await listRepairRequestsForUser(user.id);
+          if (cancelled) return;
+          setRecentRequests((requests || []).slice(0, 5));
         }
       } catch (e) {
         console.log('[RepairRequest] load', e);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
+  const partnerId = partner?.id || null;
   const message = selectedId
     ? REPAIR_MESSAGE_TEMPLATES.find((t) => t.id === selectedId)?.label
     : customMessage.trim();
@@ -69,7 +90,12 @@ export default function RepairRequestScreen({ navigation }) {
     if (!canSubmit) return;
     try {
       setSubmitting(true);
-      await dataStore.sendRepairRequest(user.id, partnerId, message);
+      await sendRepairRequest({
+        pairingId: pairing.id,
+        fromUserId: user.id,
+        toUserId: partnerId,
+        message,
+      });
       Alert.alert(
         'Repair request sent',
         `${
@@ -79,7 +105,7 @@ export default function RepairRequestScreen({ navigation }) {
       );
     } catch (e) {
       console.log('[RepairRequest] send', e);
-      Alert.alert('Error', 'Could not send. Please try again.');
+      Alert.alert('Error', e.message || 'Could not send. Please try again.');
       setSubmitting(false);
     }
   };
@@ -113,14 +139,14 @@ export default function RepairRequestScreen({ navigation }) {
           <Feather name="users" size={32} color={COLORS.gray300} />
           <Text style={styles.emptyTitle}>No partner linked yet</Text>
           <Text style={styles.emptyText}>
-            Link your partner first to send a repair request.
+            Your therapist needs to pair you with your partner first.
           </Text>
           <TouchableOpacity
             style={styles.linkBtn}
             onPress={() => navigation.replace('CouplePairing')}
             activeOpacity={0.85}
           >
-            <Text style={styles.linkBtnText}>Link your partner</Text>
+            <Text style={styles.linkBtnText}>View Pairing Status</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -251,6 +277,7 @@ export default function RepairRequestScreen({ navigation }) {
 }
 
 const formatTimeAgo = (iso) => {
+  if (!iso) return '';
   const ms = Date.now() - new Date(iso).getTime();
   const hours = Math.round(ms / 3600000);
   if (hours < 1) return 'just now';

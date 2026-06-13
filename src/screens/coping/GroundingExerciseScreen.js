@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import useSafeGoBack from '../../hooks/useSafeGoBack';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/colors';
 
 const STEPS = [
@@ -21,6 +22,7 @@ const STEPS = [
 ];
 
 export default function GroundingExerciseScreen({ navigation }) {
+  const goBack = useSafeGoBack();
   const [stepIndex, setStepIndex] = useState(0);
   const [inputs, setInputs] = useState(() => STEPS.map((s) => Array(s.count).fill('')));
   const [done, setDone] = useState(false);
@@ -45,7 +47,7 @@ export default function GroundingExerciseScreen({ navigation }) {
 
   const back = () => {
     if (stepIndex > 0) setStepIndex(stepIndex - 1);
-    else navigation.goBack();
+    else goBack();
   };
 
   const restart = () => {
@@ -58,7 +60,7 @@ export default function GroundingExerciseScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={8}>
+          <TouchableOpacity onPress={() => goBack()} hitSlop={8}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.title}>5-4-3-2-1 Grounding</Text>
@@ -93,7 +95,7 @@ export default function GroundingExerciseScreen({ navigation }) {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.secondaryBtn}
-            onPress={() => navigation.goBack()}
+            onPress={() => goBack()}
           >
             <Text style={styles.secondaryBtnText}>Back to Toolbox</Text>
           </TouchableOpacity>

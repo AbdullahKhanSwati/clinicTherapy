@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -13,15 +13,22 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
-import { useAuth } from '../../../../App';
+import { useAuth } from '../../../contexts/AuthContext';
+import Avatar from '../../../components/Avatar';
+import { getPartnerProfileForUser } from '../../../services/api';
 
 const BLUSH = '#D4536B';
 const INK = '#1A2332';
 
-const PARTNER_LOOKUP = {
-  partner1: 'partner2',
-  partner2: 'partner1',
+const ACCESSORY_EMOJI = {
+  none: '',
+  crown: '👑',
+  star: '⭐',
+  sparkles: '✨',
+  flower: '🌸',
+  heart: '💖',
+  hat: '🎩',
+  rainbow: '🌈',
 };
 
 const PRIMARY_NAV = [
@@ -31,63 +38,76 @@ const PRIMARY_NAV = [
   { id: 'profile', label: 'Profile', tab: 'Profile' },
 ];
 
+// Quick links open modal screens that live on the outer (Root) stack via the
+// parent navigator. Relationship links and "more" links go to the Profile
+// tab's inner stack (where AvatarCustomizer/Settings/etc. are registered).
 const QUICK_LINKS = [
-  { id: 'checkin', label: 'Daily Check-In', screen: 'DailyCheckIn' },
-  { id: 'appreciation', label: 'Send Appreciation', screen: 'AppreciationExchange' },
-  { id: 'repair', label: 'Send Repair Request', screen: 'RepairRequest' },
-  { id: 'pause', label: 'We Need a Pause', screen: 'ConflictPause' },
+  { id: 'checkin',      label: 'Daily Check-In',       _kind: 'parent', screen: 'DailyCheckIn' },
+  { id: 'appreciation', label: 'Send Appreciation',    _kind: 'parent', screen: 'AppreciationExchange' },
+  { id: 'repair',       label: 'Send Repair Request',  _kind: 'parent', screen: 'RepairRequest' },
+  { id: 'pause',        label: 'We Need a Pause',      _kind: 'parent', screen: 'ConflictPause' },
 ];
 
 const RELATIONSHIP_LINKS = [
-  { id: 'pairing', label: 'Manage Partner Pairing', screen: 'CouplePairing' },
-  { id: 'journal', label: 'Couple Journal', screen: 'Journal' },
-  { id: 'mood', label: 'Mood Check-In', screen: 'MoodCheckIn' },
+  { id: 'pairing', label: 'Manage Partner Pairing', _kind: 'parent', screen: 'CouplePairing' },
+  { id: 'journal', label: 'Couple Journal',         _kind: 'tab',    tab: 'Profile', screen: 'Journal' },
+  { id: 'mood',    label: 'Mood Check-In',          _kind: 'tab',    tab: 'Home',    screen: 'MoodCheckIn' },
 ];
 
 const MORE_LINKS = [
-  { id: 'progress', label: 'Progress', screen: 'Progress' },
-  { id: 'programs', label: 'Therapy Programs', screen: 'TherapyPrograms' },
-  { id: 'toolbox', label: 'Coping Toolbox', screen: 'CopingToolbox' },
-  { id: 'breath', label: 'Breathing', screen: 'BreathingExercise' },
-  { id: 'affirm', label: 'Affirmations', screen: 'Affirmations' },
-  { id: 'resources', label: 'Resources', screen: 'Resources' },
-  { id: 'notifications', label: 'Notifications', screen: 'Notifications' },
-  { id: 'settings', label: 'Settings', screen: 'Settings' },
+  { id: 'progress',      label: 'Progress',         _kind: 'tab', tab: 'Profile', screen: 'Progress' },
+  { id: 'programs',      label: 'Therapy Programs', _kind: 'tab', tab: 'Together', screen: 'TherapyPrograms' },
+  { id: 'toolbox',       label: 'Coping Toolbox',   _kind: 'tab', tab: 'Profile', screen: 'CopingToolbox' },
+  { id: 'breath',        label: 'Breathing',        _kind: 'tab', tab: 'Together', screen: 'BreathingExercise' },
+  { id: 'affirm',        label: 'Affirmations',     _kind: 'tab', tab: 'Together', screen: 'Affirmations' },
+  { id: 'resources',     label: 'Resources',        _kind: 'tab', tab: 'Profile', screen: 'Resources' },
+  { id: 'notifications', label: 'Notifications',    _kind: 'tab', tab: 'Profile', screen: 'Notifications' },
+  { id: 'settings',      label: 'Settings',         _kind: 'tab', tab: 'Profile', screen: 'Settings' },
 ];
 
 export default function CouplesDrawerContent({ navigation }) {
-  const { signOut } = useAuth();
-  const [user, setUser] = useState(null);
+  const { signOut, profile: user } = useAuth();
   const [partner, setPartner] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      if (!user?.id) return;
       try {
-        await dataStore.initialize();
-        const u = await dataStore.getCurrentUser();
-        setUser(u);
-        if (u) {
-          const partnerId = PARTNER_LOOKUP[u.id];
-          if (partnerId) {
-            const p = await dataStore.getUserById(partnerId);
-            setPartner(p);
-          }
-        }
+        const p = await getPartnerProfileForUser(user.id);
+        if (!cancelled) setPartner(p);
       } catch (e) {
-        console.log('[Couples DrawerContent] load error', e);
+        console.log('[Couples DrawerContent] partner load error', e);
       }
     })();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   const goToTab = (tabName) => {
     navigation.navigate('DashboardTabs', { screen: tabName });
     navigation.closeDrawer?.();
   };
 
-  const goToScreen = (screenName) => {
-    const parent = navigation.getParent?.();
-    (parent || navigation).navigate(screenName);
+  const goToTabbedScreen = (tabName, screenName) => {
+    navigation.navigate('DashboardTabs', {
+      screen: tabName,
+      params: { screen: screenName },
+    });
     navigation.closeDrawer?.();
+  };
+
+  const goToParent = (screenName, params) => {
+    const parent = navigation.getParent?.();
+    (parent || navigation).navigate(screenName, params);
+    navigation.closeDrawer?.();
+  };
+
+  const dispatch = (item) => {
+    if (item._kind === 'parent') return goToParent(item.screen);
+    if (item._kind === 'tab')    return goToTabbedScreen(item.tab, item.screen);
+    return navigation.navigate(item.screen);
   };
 
   const userName = (user?.name || 'You').split(' ')[0];
@@ -99,22 +119,34 @@ export default function CouplesDrawerContent({ navigation }) {
         {/* Couple identity */}
         <View style={styles.profileBlock}>
           <View style={styles.dualAvatarRow}>
-            <View
-              style={[
-                styles.dualAvatar,
-                { backgroundColor: user?.profileColor || COLORS.primary },
-              ]}
-            >
-              <Text style={styles.dualAvatarEmoji}>{user?.avatar || '👤'}</Text>
+            <View style={styles.dualAvatarWrap}>
+              <Avatar
+                value={user?.avatar}
+                name={user?.name}
+                size={48}
+                backgroundColor={user?.profileColor || COLORS.primary}
+                emojiSize={22}
+              />
+              {user?.accessory && ACCESSORY_EMOJI[user.accessory] ? (
+                <Text style={styles.accessoryBadge}>
+                  {ACCESSORY_EMOJI[user.accessory]}
+                </Text>
+              ) : null}
             </View>
             <Text style={styles.dualAmp}>&</Text>
-            <View
-              style={[
-                styles.dualAvatar,
-                { backgroundColor: partner?.profileColor || BLUSH },
-              ]}
-            >
-              <Text style={styles.dualAvatarEmoji}>{partner?.avatar || '👤'}</Text>
+            <View style={styles.dualAvatarWrap}>
+              <Avatar
+                value={partner?.avatar}
+                name={partner?.name}
+                size={48}
+                backgroundColor={partner?.profileColor || BLUSH}
+                emojiSize={22}
+              />
+              {partner?.accessory && ACCESSORY_EMOJI[partner.accessory] ? (
+                <Text style={styles.accessoryBadge}>
+                  {ACCESSORY_EMOJI[partner.accessory]}
+                </Text>
+              ) : null}
             </View>
           </View>
           <Text style={styles.name}>
@@ -154,7 +186,7 @@ export default function CouplesDrawerContent({ navigation }) {
                 styles.linkItem,
                 i < QUICK_LINKS.length - 1 && styles.linkItemBorder,
               ]}
-              onPress={() => goToScreen(it.screen)}
+              onPress={() => dispatch(it)}
               activeOpacity={0.7}
             >
               <Text style={styles.linkLabel}>{it.label}</Text>
@@ -172,7 +204,7 @@ export default function CouplesDrawerContent({ navigation }) {
                 styles.linkItem,
                 i < RELATIONSHIP_LINKS.length - 1 && styles.linkItemBorder,
               ]}
-              onPress={() => goToScreen(it.screen)}
+              onPress={() => dispatch(it)}
               activeOpacity={0.7}
             >
               <Text style={styles.linkLabel}>{it.label}</Text>
@@ -190,7 +222,7 @@ export default function CouplesDrawerContent({ navigation }) {
                 styles.linkItem,
                 i < MORE_LINKS.length - 1 && styles.linkItemBorder,
               ]}
-              onPress={() => goToScreen(it.screen)}
+              onPress={() => dispatch(it)}
               activeOpacity={0.7}
             >
               <Text style={styles.linkLabel}>{it.label}</Text>
@@ -223,14 +255,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.md,
   },
-  dualAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
+  dualAvatarWrap: { position: 'relative' },
+  accessoryBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -2,
+    fontSize: 16,
   },
-  dualAvatarEmoji: { fontSize: 22 },
   dualAmp: {
     fontSize: 22,
     fontWeight: '300',

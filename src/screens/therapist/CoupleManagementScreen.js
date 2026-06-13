@@ -16,7 +16,13 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
+import {
+  listAllProfiles,
+  listCouplePairings,
+  listPartnerCheckins,
+  listRepairRequests,
+  listSharedGoals,
+} from '../../services/api';
 
 const INK = '#1A2332';
 const BLUSH = '#D4536B';
@@ -51,16 +57,20 @@ export default function CoupleManagementScreen({ route, navigation }) {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      await dataStore.initialize();
-      const [allUsers, allPairings, allCheckins, allRepairs, allGoals] =
+      const [allProfiles, allPairings, allCheckins, allRepairs, allGoals] =
         await Promise.all([
-          dataStore.getUsers(),
-          dataStore.getCouplePairings(),
-          dataStore.getPartnerCheckins(),
-          dataStore.getRepairRequests(),
-          dataStore.getSharedGoals(),
+          listAllProfiles(),
+          listCouplePairings(),
+          listPartnerCheckins(),
+          listRepairRequests(),
+          listSharedGoals(),
         ]);
-      setUsers(allUsers || {});
+      // listAllProfiles returns an array — build a lookup map keyed by id so
+      // the rest of the screen (which does users[p.partnerAId]) keeps working.
+      const userMap = Object.fromEntries(
+        (allProfiles || []).map((p) => [p.id, p])
+      );
+      setUsers(userMap);
       setPairings(allPairings || []);
       setCheckins(allCheckins || []);
       setRepairs(allRepairs || []);

@@ -7,18 +7,12 @@ import {
   TextInput,
   ScrollView,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../constants/colors';
-import { useAuth } from '../../App';
-
-const DEMO_USERS = [
-  { email: 'child@therapy.com', role: 'child', name: 'Emma (Child)' },
-  { email: 'teen@therapy.com', role: 'teen', name: 'Alex (Teen)' },
-  { email: 'couple1@therapy.com', role: 'couples', name: 'John & Sarah' },
-  { email: 'parent@therapy.com', role: 'family', name: 'Parent Dashboard' },
-  { email: 'therapist@therapy.com', role: 'therapist', name: 'Dr. Smith' },
-];
+import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginScreen({ navigation }) {
   const { signIn } = useAuth();
@@ -26,41 +20,29 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleDemoLogin = async (role) => {
-    setLoading(true);
-    try {
-      await signIn({
-        token: 'demo_token_' + role,
-        role,
-        email: email || 'demo@therapy.com',
-      });
-    } catch (error) {
-      Alert.alert('Error', 'Failed to login');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please enter email and password');
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !password) {
+      Alert.alert('Missing info', 'Please enter your email and password.');
       return;
     }
 
     setLoading(true);
     try {
-      const demoUser = DEMO_USERS.find(u => u.email === email);
-      if (demoUser) {
-        await signIn({
-          token: 'demo_token_' + demoUser.role,
-          role: demoUser.role,
-          email,
-        });
-      } else {
-        Alert.alert('Error', 'User not found. Try a demo account below.');
-      }
+      await signIn({ email: trimmed, password });
+      // Auth state listener in App.js handles navigation
     } catch (error) {
-      Alert.alert('Error', 'Login failed');
+      const msg = error?.message || 'Login failed';
+      if (/invalid login credentials/i.test(msg)) {
+        Alert.alert('Invalid credentials', 'Email or password is incorrect.');
+      } else if (/email not confirmed/i.test(msg)) {
+        Alert.alert(
+          'Email not confirmed',
+          'Please check your inbox and confirm your email before signing in.'
+        );
+      } else {
+        Alert.alert('Login failed', msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -68,71 +50,64 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to your account</Text>
-        </View>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.header}>
+            <Text style={styles.title}>Welcome Back</Text>
+            <Text style={styles.subtitle}>Sign in to your account</Text>
+          </View>
 
-        <View style={styles.formSection}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="you@example.com"
-            value={email}
-            onChangeText={setEmail}
-            editable={!loading}
-            placeholderTextColor={COLORS.gray400}
-          />
+          <View style={styles.formSection}>
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="you@example.com"
+              value={email}
+              onChangeText={setEmail}
+              editable={!loading}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              placeholderTextColor={COLORS.gray400}
+            />
 
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="••••••••"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            editable={!loading}
-            placeholderTextColor={COLORS.gray400}
-          />
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="••••••••"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+              editable={!loading}
+              placeholderTextColor={COLORS.gray400}
+            />
 
-          <TouchableOpacity
-            style={[styles.primaryButton, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            <Text style={styles.primaryButtonText}>
-              {loading ? 'Signing in...' : 'Sign In'}
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={styles.divider}>OR</Text>
-
-          <Text style={styles.demoTitle}>Quick Demo Access</Text>
-          <Text style={styles.demoSubtitle}>Select a role to explore the app:</Text>
-
-          {DEMO_USERS.map((user) => (
             <TouchableOpacity
-              key={user.role}
-              style={styles.demoButton}
-              onPress={() => handleDemoLogin(user.role)}
+              style={[styles.primaryButton, loading && styles.buttonDisabled]}
+              onPress={handleLogin}
               disabled={loading}
             >
-              <View style={styles.demoButtonContent}>
-                <Text style={styles.demoButtonLabel}>{user.name}</Text>
-                <Text style={styles.demoButtonArrow}>→</Text>
-              </View>
+              <Text style={styles.primaryButtonText}>
+                {loading ? 'Signing in...' : 'Sign In'}
+              </Text>
             </TouchableOpacity>
-          ))}
-        </View>
+          </View>
 
-        <View style={styles.footerSection}>
-          <Text style={styles.footerText}>Don't have an account? </Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-            <Text style={styles.footerLink}>Sign up</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+          <View style={styles.footerSection}>
+            <Text style={styles.footerText}>Don't have an account? </Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+              <Text style={styles.footerLink}>Sign up</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -148,22 +123,15 @@ const styles = StyleSheet.create({
     paddingTop: SPACING['2xl'],
     paddingBottom: SPACING['2xl'],
   },
-  header: {
-    marginBottom: SPACING['2xl'],
-  },
+  header: { marginBottom: SPACING['2xl'] },
   title: {
     fontSize: TYPOGRAPHY['2xl'],
     fontWeight: '700',
     color: COLORS.primary,
     marginBottom: SPACING.xs,
   },
-  subtitle: {
-    fontSize: TYPOGRAPHY.base,
-    color: COLORS.gray500,
-  },
-  formSection: {
-    marginVertical: SPACING.lg,
-  },
+  subtitle: { fontSize: TYPOGRAPHY.base, color: COLORS.gray500 },
+  formSection: { marginVertical: SPACING.lg },
   label: {
     fontSize: TYPOGRAPHY.sm,
     fontWeight: '600',
@@ -188,64 +156,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: SPACING.lg,
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
+  buttonDisabled: { opacity: 0.6 },
   primaryButtonText: {
     color: COLORS.white,
     fontSize: TYPOGRAPHY.base,
     fontWeight: '600',
-  },
-  divider: {
-    textAlign: 'center',
-    color: COLORS.gray400,
-    marginVertical: SPACING.lg,
-    fontSize: TYPOGRAPHY.sm,
-  },
-  demoTitle: {
-    fontSize: TYPOGRAPHY.base,
-    fontWeight: '600',
-    color: COLORS.gray700,
-    marginTop: SPACING.lg,
-    marginBottom: SPACING.xs,
-  },
-  demoSubtitle: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.gray500,
-    marginBottom: SPACING.md,
-  },
-  demoButton: {
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
-    borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    marginBottom: SPACING.sm,
-    backgroundColor: COLORS.gray50,
-  },
-  demoButtonContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  demoButtonLabel: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: '500',
-    color: COLORS.primary,
-  },
-  demoButtonArrow: {
-    fontSize: TYPOGRAPHY.base,
-    color: COLORS.primary,
   },
   footerSection: {
     flexDirection: 'row',
     justifyContent: 'center',
     marginTop: SPACING['2xl'],
   },
-  footerText: {
-    color: COLORS.gray600,
-    fontSize: TYPOGRAPHY.sm,
-  },
+  footerText: { color: COLORS.gray600, fontSize: TYPOGRAPHY.sm },
   footerLink: {
     color: COLORS.primary,
     fontWeight: '600',

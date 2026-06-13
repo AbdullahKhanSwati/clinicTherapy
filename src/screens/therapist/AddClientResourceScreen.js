@@ -9,7 +9,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import {
   COLORS,
@@ -17,7 +17,13 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
+import {
+  getProfileById,
+  getCurrentUserId,
+  listResources,
+  listClientResources,
+  assignClientResource,
+} from '../../services/api';
 
 const INK = '#1A2332';
 const ACCENT = '#D97706';
@@ -39,24 +45,20 @@ export default function AddClientResourceScreen({ route, navigation }) {
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     (async () => {
       try {
         setLoading(true);
-        await dataStore.initialize();
         const [c, allResources, clientResources] = await Promise.all([
-          clientId ? dataStore.getUserById(clientId) : null,
-          dataStore.getResources(),
-          clientId
-            ? dataStore.getClientResourcesByClient(clientId)
-            : Promise.resolve([]),
+          clientId ? getProfileById(clientId) : null,
+          listResources(),
+          clientId ? listClientResources(clientId) : Promise.resolve([]),
         ]);
         setClient(c);
         setResources(allResources || []);
-        setAlreadyAssigned(
-          (clientResources || []).map((cr) => cr.resourceId)
-        );
+        setAlreadyAssigned((clientResources || []).map((cr) => cr.resourceId));
       } catch (e) {
         console.log('[AddClientResource] load error', e);
       } finally {
@@ -98,13 +100,13 @@ export default function AddClientResourceScreen({ route, navigation }) {
     if (!canSubmit || !clientId) return;
     try {
       setSubmitting(true);
-      const therapist = await dataStore.getCurrentUser();
-      await dataStore.assignResourceToClient(
+      const therapistId = await getCurrentUserId();
+      await assignClientResource({
         clientId,
-        selectedId,
-        therapist?.id || 'therapist1',
-        note.trim()
-      );
+        resourceId: selectedId,
+        assignedBy: therapistId,
+        note: note.trim() || null,
+      });
       Alert.alert(
         'Resource assigned',
         `"${selected?.title}" is now in ${client?.name || 'the client'}'s profile.`,
@@ -112,7 +114,7 @@ export default function AddClientResourceScreen({ route, navigation }) {
       );
     } catch (e) {
       console.log('[AddClientResource] assign error', e);
-      Alert.alert('Error', 'Failed to assign. Please try again.');
+      Alert.alert('Error', e?.message || 'Failed to assign. Please try again.');
       setSubmitting(false);
     }
   };
@@ -270,7 +272,7 @@ export default function AddClientResourceScreen({ route, navigation }) {
         <View style={{ height: SPACING.xl }} />
       </ScrollView>
 
-      <View style={styles.submitBar}>
+      <View style={[styles.submitBar, { paddingBottom: insets.bottom + SPACING.md }]}>
         <TouchableOpacity
           style={[
             styles.submitBtn,

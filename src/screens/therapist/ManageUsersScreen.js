@@ -17,7 +17,10 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
+import {
+  listAllProfiles,
+  listCouplePairings,
+} from '../../services/api';
 
 const INK = '#1A2332';
 
@@ -85,12 +88,16 @@ export default function ManageUsersScreen({ route, navigation }) {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      await dataStore.initialize();
-      const [allUsers, allPairings] = await Promise.all([
-        dataStore.getUsers(),
-        dataStore.getCouplePairings(),
+      const [allProfiles, allPairings] = await Promise.all([
+        listAllProfiles(),
+        listCouplePairings(),
       ]);
-      setUsers(allUsers || {});
+      // Convert array → map for backward compatibility with existing screen code
+      const usersMap = {};
+      (allProfiles || []).forEach((p) => {
+        usersMap[p.id] = p;
+      });
+      setUsers(usersMap);
       setPairings(allPairings || []);
     } catch (e) {
       console.log('[ManageUsers] load', e);

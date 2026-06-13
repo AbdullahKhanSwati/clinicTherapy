@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import {
   COLORS,
@@ -17,8 +18,12 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../constants/colors';
-import { WORKSHEET_TEMPLATES } from '../../data/worksheetTemplates';
-import dataStore from '../../utils/dataStore';
+import {
+  listAllProfiles,
+  listWorksheets,
+  getCurrentUserId,
+  assignWorksheet as apiAssignWorksheet,
+} from '../../services/api';
 
 const INK = '#1A2332';
 const ACCENT = COLORS.primary;
@@ -60,33 +65,41 @@ export default function AssignWorksheetScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [clientSearch, setClientSearch] = useState('');
   const [worksheetSearch, setWorksheetSearch] = useState('');
+  const insets = useSafeAreaInsets();
 
-  useEffect(() => {
-    (async () => {
-      try {
-        await dataStore.initialize();
-        const [users, current, custom] = await Promise.all([
-          dataStore.getUsers(),
-          dataStore.getCurrentUser(),
-          dataStore.getCustomWorksheets(),
-        ]);
-        setClients(
-          Object.values(users || {}).filter((u) => u.role !== 'therapist')
-        );
-        setTherapist(current);
-        setCustomWorksheets(custom || []);
-      } catch (e) {
-        console.log('[AssignWorksheet] load error', e);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  const allWorksheets = useMemo(
-    () => [...Object.values(WORKSHEET_TEMPLATES), ...(customWorksheets || [])],
-    [customWorksheets]
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          setLoading(true);
+          const [profiles, therapistId, custom] = await Promise.all([
+            listAllProfiles(),
+            getCurrentUserId(),
+            listWorksheets(),
+          ]);
+          if (cancelled) return;
+          setClients(
+            (profiles || []).filter(
+              (u) => u.role !== 'therapist' && u.role !== 'admin'
+            )
+          );
+          setTherapist({ id: therapistId });
+          setCustomWorksheets(custom || []);
+        } catch (e) {
+          console.log('[AssignWorksheet] load error', e);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
   );
+
+  // All worksheets come from Supabase.
+  const allWorksheets = useMemo(() => customWorksheets || [], [customWorksheets]);
 
   const selectedClient = useMemo(
     () => clients.find((c) => c.id === selectedClientId),
@@ -126,8 +139,8 @@ export default function AssignWorksheetScreen({ route, navigation }) {
     const q = worksheetSearch.toLowerCase().trim();
     return list.filter(
       (w) =>
-        w.title.toLowerCase().includes(q) ||
-        w.category.toLowerCase().includes(q)
+        (w.title || '').toLowerCase().includes(q) ||
+        (w.category || '').toLowerCase().includes(q)
     );
   }, [allWorksheets, selectedClient, worksheetSearch]);
 
@@ -141,14 +154,14 @@ export default function AssignWorksheetScreen({ route, navigation }) {
       const days = DUE_OPTIONS.find((d) => d.id === dueChoice)?.days || 7;
       due.setDate(due.getDate() + days);
 
-      await dataStore.assignWorksheet(
-        selectedClientId,
-        therapist?.id || 'therapist1',
-        selectedWorksheetId,
-        due.toISOString(),
-        notes,
-        priority
-      );
+      const notesWithPriority = `[priority:${priority}]${notes ? ' ' + notes : ''}`;
+      await apiAssignWorksheet({
+        worksheetId: selectedWorksheetId,
+        assigneeId: selectedClientId,
+        assignedBy: therapist?.id || null,
+        dueDate: due.toISOString(),
+        notes: notesWithPriority,
+      });
 
       Alert.alert(
         'Assignment Sent',
@@ -157,7 +170,7 @@ export default function AssignWorksheetScreen({ route, navigation }) {
       );
     } catch (e) {
       console.log('[AssignWorksheet] error', e);
-      Alert.alert('Error', 'Failed to assign worksheet. Please try again.');
+      Alert.alert('Error', e?.message || 'Failed to assign worksheet. Please try again.');
       setSubmitting(false);
     }
   };
@@ -334,7 +347,7 @@ export default function AssignWorksheetScreen({ route, navigation }) {
             >
               <View style={{ flex: 1 }}>
                 <Text style={styles.selectedWsCategory}>
-                  {selectedWorksheet.category.toUpperCase()}
+                  {(selectedWorksheet.category || 'general').toUpperCase()}
                 </Text>
                 <Text style={styles.selectedWsTitle}>
                   {selectedWorksheet.title}
@@ -359,6 +372,11 @@ export default function AssignWorksheetScreen({ route, navigation }) {
                 />
               </View>
               <View style={styles.wsList}>
+                {filteredWorksheets.length === 0 && (
+                  <Text style={styles.emptyInlineText}>
+                    No worksheets yet. Create one from the module hub first.
+                  </Text>
+                )}
                 {filteredWorksheets.slice(0, 12).map((w) => {
                   const matchesClient =
                     selectedClient &&
@@ -373,7 +391,7 @@ export default function AssignWorksheetScreen({ route, navigation }) {
                       <View style={{ flex: 1 }}>
                         <View style={styles.wsRowHeader}>
                           <Text style={styles.wsRowCategory}>
-                            {w.category.toUpperCase()}
+                            {(w.category || 'general').toUpperCase()}
                           </Text>
                           {matchesClient && (
                             <View style={styles.matchBadge}>
@@ -474,7 +492,7 @@ export default function AssignWorksheetScreen({ route, navigation }) {
       </ScrollView>
 
       {/* Sticky submit */}
-      <View style={styles.submitBar}>
+      <View style={[styles.submitBar, { paddingBottom: insets.bottom + SPACING.md }]}>
         <TouchableOpacity
           style={[
             styles.submitBtn,

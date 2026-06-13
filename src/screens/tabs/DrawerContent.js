@@ -12,7 +12,7 @@ import {
   DrawerItemList,
 } from '@react-navigation/drawer';
 import { COLORS, TYPOGRAPHY, SPACING, SHADOWS } from '../../constants/colors';
-import { useAuth } from '../../../App';
+import { useAuth } from '../../contexts/AuthContext';
 import dataStore from '../../utils/dataStore';
 import { tryCatch } from '../../utils/safeOperations';
 

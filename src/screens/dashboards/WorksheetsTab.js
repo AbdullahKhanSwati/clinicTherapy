@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -8,31 +8,58 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/colors';
-import { WORKSHEET_TEMPLATES } from '../../data/worksheetTemplates';
-import dataStore from '../../utils/dataStore';
+import { listMyAssignments, listWorksheets } from '../../services/api';
 import TabScreenHeader from '../../components/TabScreenHeader';
+
+const STATUS_LABEL = {
+  not_started: 'New',
+  in_progress: 'In Progress',
+  completed: 'Completed',
+};
 
 export default function WorksheetsTab({ navigation }) {
   const [assignments, setAssignments] = useState([]);
+  const [worksheetsById, setWorksheetsById] = useState({});
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        await dataStore.initialize();
-        const user = await dataStore.getCurrentUser();
-        if (user) {
-          const list = await dataStore.getAssignmentsByClient(user.id);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          setLoading(true);
+          const [list, ws] = await Promise.all([
+            listMyAssignments(),
+            listWorksheets(),
+          ]);
+          if (cancelled) return;
           setAssignments(list || []);
+          const map = {};
+          (ws || []).forEach((w) => {
+            map[w.id] = w;
+          });
+          setWorksheetsById(map);
+        } catch (e) {
+          console.log('[WorksheetsTab] load error', e);
+        } finally {
+          if (!cancelled) setLoading(false);
         }
-      } catch (e) {
-        console.log('[WorksheetsTab] load error', e);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
+  const openWorksheet = (a) => {
+    const parent = navigation.getParent?.() || navigation;
+    parent.navigate('Worksheet', {
+      worksheetId: a.worksheetId,
+      assignmentId: a.id,
+    });
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -50,24 +77,19 @@ export default function WorksheetsTab({ navigation }) {
           </View>
         ) : (
           assignments.map((a) => {
-            const w = WORKSHEET_TEMPLATES?.[a.worksheetId];
+            const w = worksheetsById[a.worksheetId];
             if (!w) return null;
             const statusColor =
               a.status === 'completed'
                 ? COLORS.success
-                : a.status === 'in-progress'
+                : a.status === 'in_progress'
                 ? COLORS.warning
                 : COLORS.gray500;
             return (
               <TouchableOpacity
                 key={a.id}
                 style={styles.card}
-                onPress={() =>
-                  navigation.navigate('Worksheet', {
-                    worksheetId: a.worksheetId,
-                    assignmentId: a.id,
-                  })
-                }
+                onPress={() => openWorksheet(a)}
               >
                 <View style={styles.cardHeader}>
                   <View style={{ flex: 1 }}>
@@ -81,11 +103,7 @@ export default function WorksheetsTab({ navigation }) {
                     ]}
                   >
                     <Text style={[styles.badgeText, { color: statusColor }]}>
-                      {a.status === 'pending'
-                        ? 'New'
-                        : a.status === 'in-progress'
-                        ? 'In Progress'
-                        : 'Completed'}
+                      {STATUS_LABEL[a.status] || 'New'}
                     </Text>
                   </View>
                 </View>

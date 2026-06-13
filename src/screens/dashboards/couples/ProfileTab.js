@@ -14,22 +14,35 @@ import {
   SPACING,
   BORDER_RADIUS,
 } from '../../../constants/colors';
-import dataStore from '../../../utils/dataStore';
-import { useAuth } from '../../../../App';
+import { useAuth } from '../../../contexts/AuthContext';
+import Avatar from '../../../components/Avatar';
+import {
+  listMyMoodEntries,
+  listMyJournalEntries,
+  listMyAssignments,
+  getActivePairingForUser,
+  getPartnerProfileForUser,
+} from '../../../services/api';
 
 const BLUSH = '#D4536B';
 const INK = '#1A2332';
 const SAGE = '#7A8B7E';
 
-const PARTNER_LOOKUP = {
-  partner1: 'partner2',
-  partner2: 'partner1',
+const ACCESSORY_EMOJI = {
+  none: '',
+  crown: '👑',
+  star: '⭐',
+  sparkles: '✨',
+  flower: '🌸',
+  heart: '💖',
+  hat: '🎩',
+  rainbow: '🌈',
 };
 
 export default function CouplesProfileTab() {
   const navigation = useNavigation();
-  const { signOut } = useAuth();
-  const [user, setUser] = useState(null);
+  const { signOut, profile: user } = useAuth();
+  const [pairing, setPairing] = useState(null);
   const [partner, setPartner] = useState(null);
   const [stats, setStats] = useState({ moods: 0, journals: 0, completed: 0 });
 
@@ -37,29 +50,23 @@ export default function CouplesProfileTab() {
     useCallback(() => {
       let cancelled = false;
       (async () => {
+        if (!user?.id) return;
         try {
-          await dataStore.initialize();
-          const u = await dataStore.getCurrentUser();
+          const [p, partnerProfile, m, j, a] = await Promise.all([
+            getActivePairingForUser(user.id),
+            getPartnerProfileForUser(user.id),
+            listMyMoodEntries(),
+            listMyJournalEntries(),
+            listMyAssignments(),
+          ]);
           if (cancelled) return;
-          setUser(u);
-          if (u) {
-            const partnerId = PARTNER_LOOKUP[u.id];
-            if (partnerId) {
-              const p = await dataStore.getUserById(partnerId);
-              if (!cancelled) setPartner(p);
-            }
-            const [m, j, a] = await Promise.all([
-              dataStore.getMoodEntriesByUser(u.id),
-              dataStore.getJournalEntriesByUser(u.id),
-              dataStore.getAssignmentsByClient(u.id),
-            ]);
-            if (cancelled) return;
-            setStats({
-              moods: (m || []).length,
-              journals: (j || []).length,
-              completed: (a || []).filter((x) => x.status === 'completed').length,
-            });
-          }
+          setPairing(p);
+          setPartner(partnerProfile);
+          setStats({
+            moods: (m || []).length,
+            journals: (j || []).length,
+            completed: (a || []).filter((x) => x.status === 'completed').length,
+          });
         } catch (e) {
           console.log('[Couples ProfileTab] load error', e);
         }
@@ -67,42 +74,47 @@ export default function CouplesProfileTab() {
       return () => {
         cancelled = true;
       };
-    }, [])
+    }, [user?.id])
   );
 
   const openDrawer = () => navigation.dispatch(DrawerActions.openDrawer());
+
+  const openParent = (screen, params) => {
+    const parent = navigation.getParent?.() || navigation;
+    parent.navigate(screen, params);
+  };
 
   const MENU_GROUPS = [
     {
       label: 'Couple',
       items: [
-        { id: 'pairing', label: 'Partner Pairing', screen: 'CouplePairing' },
-        { id: 'avatar', label: 'Customize Avatar', screen: 'AvatarCustomizer' },
-        { id: 'journal', label: 'Couple Journal', screen: 'Journal' },
+        { id: 'pairing', label: 'Partner Pairing', _kind: 'parent', screen: 'CouplePairing' },
+        { id: 'avatar', label: 'Customize Avatar', _kind: 'stack', screen: 'AvatarCustomizer' },
+        { id: 'journal', label: 'Couple Journal', _kind: 'stack', screen: 'Journal' },
       ],
     },
     {
       label: 'Daily Tools',
       items: [
-        { id: 'checkin', label: 'Daily Check-In', screen: 'DailyCheckIn' },
-        { id: 'appreciation', label: 'Appreciation Exchange', screen: 'AppreciationExchange' },
-        { id: 'repair', label: 'Send Repair Request', screen: 'RepairRequest' },
-        { id: 'pause', label: 'We Need a Pause', screen: 'ConflictPause' },
+        { id: 'checkin', label: 'Daily Check-In', _kind: 'parent', screen: 'DailyCheckIn' },
+        { id: 'appreciation', label: 'Appreciation Exchange', _kind: 'parent', screen: 'AppreciationExchange' },
+        { id: 'repair', label: 'Send Repair Request', _kind: 'parent', screen: 'RepairRequest' },
+        { id: 'pause', label: 'We Need a Pause', _kind: 'parent', screen: 'ConflictPause' },
       ],
     },
     {
       label: 'Wellness',
       items: [
-        { id: 'progress', label: 'Progress Report', screen: 'Progress' },
-        { id: 'toolbox', label: 'Coping Toolbox', screen: 'CopingToolbox' },
-        { id: 'resources', label: 'Resources', screen: 'Resources' },
+        { id: 'progress', label: 'Progress Report', _kind: 'stack', screen: 'Progress' },
+        { id: 'toolbox', label: 'Coping Toolbox', _kind: 'stack', screen: 'CopingToolbox' },
+        { id: 'resources', label: 'Resources', _kind: 'stack', screen: 'Resources' },
       ],
     },
     {
       label: 'Account',
       items: [
-        { id: 'notifications', label: 'Notifications', screen: 'Notifications' },
-        { id: 'settings', label: 'Settings', screen: 'Settings' },
+        { id: 'notifications', label: 'Notifications', _kind: 'stack', screen: 'Notifications' },
+        { id: 'settings', label: 'Settings', _kind: 'stack', screen: 'Settings' },
       ],
     },
   ];
@@ -111,6 +123,7 @@ export default function CouplesProfileTab() {
   const partnerColor = partner?.profileColor || BLUSH;
   const userName = (user?.name || 'You').split(' ')[0];
   const partnerName = (partner?.name || 'Partner').split(' ')[0];
+  const isPaired = !!partner;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -137,30 +150,72 @@ export default function CouplesProfileTab() {
         {/* Pairing card — refined */}
         <View style={styles.pairingCard}>
           <View style={styles.pairingAvatars}>
-            <View style={[styles.pairAvatar, { backgroundColor: userColor }]}>
-              <Text style={styles.pairAvatarEmoji}>{user?.avatar || '👤'}</Text>
+            <View style={styles.pairAvatarWrap}>
+              <Avatar
+                value={user?.avatar}
+                name={user?.name}
+                size={64}
+                backgroundColor={userColor}
+                emojiSize={30}
+              />
+              {user?.accessory && ACCESSORY_EMOJI[user.accessory] ? (
+                <Text style={styles.pairAccessory}>
+                  {ACCESSORY_EMOJI[user.accessory]}
+                </Text>
+              ) : null}
             </View>
             <Text style={styles.pairAmp}>&</Text>
-            <View style={[styles.pairAvatar, { backgroundColor: partnerColor }]}>
-              <Text style={styles.pairAvatarEmoji}>{partner?.avatar || '👤'}</Text>
+            <View style={styles.pairAvatarWrap}>
+              <Avatar
+                value={partner?.avatar}
+                name={partner?.name}
+                size={64}
+                backgroundColor={partnerColor}
+                emojiSize={30}
+              />
+              {partner?.accessory && ACCESSORY_EMOJI[partner.accessory] ? (
+                <Text style={styles.pairAccessory}>
+                  {ACCESSORY_EMOJI[partner.accessory]}
+                </Text>
+              ) : null}
             </View>
           </View>
 
-          <Text style={styles.pairingEyebrow}>PARTNERED</Text>
+          <Text style={styles.pairingEyebrow}>
+            {isPaired ? 'PARTNERED' : 'NOT YET PAIRED'}
+          </Text>
           <Text style={styles.pairingTitle}>
             {userName} <Text style={styles.pairingAmpInline}>&</Text> {partnerName}
           </Text>
           <Text style={styles.pairingMeta}>
-            {user?.relationshipStatus
-              ? user.relationshipStatus.charAt(0).toUpperCase() +
-                user.relationshipStatus.slice(1)
-              : 'Together'}{' '}
-            · Connected since 2023
+            {isPaired && pairing?.pairedAt
+              ? `Paired ${new Date(pairing.pairedAt).toLocaleDateString('en-US', {
+                  month: 'long',
+                  year: 'numeric',
+                })}`
+              : 'Ask your therapist to pair you with your partner'}
           </Text>
 
-          <View style={styles.pairingStatusBadge}>
-            <View style={styles.pairingStatusDot} />
-            <Text style={styles.pairingStatusText}>Pairing active</Text>
+          <View
+            style={[
+              styles.pairingStatusBadge,
+              !isPaired && { backgroundColor: COLORS.gray100 },
+            ]}
+          >
+            <View
+              style={[
+                styles.pairingStatusDot,
+                !isPaired && { backgroundColor: COLORS.gray400 },
+              ]}
+            />
+            <Text
+              style={[
+                styles.pairingStatusText,
+                !isPaired && { color: COLORS.gray500 },
+              ]}
+            >
+              {isPaired ? 'Pairing active' : 'Pairing inactive'}
+            </Text>
           </View>
         </View>
 
@@ -168,18 +223,29 @@ export default function CouplesProfileTab() {
         <Text style={styles.sectionLabel}>YOUR PROFILE</Text>
         <View style={styles.profileCard}>
           <View style={styles.profileTopRow}>
-            <View style={[styles.profileAvatar, { backgroundColor: userColor }]}>
-              <Text style={styles.profileAvatarEmoji}>{user?.avatar || '👤'}</Text>
+            <View style={styles.profileAvatarWrap}>
+              <Avatar
+                value={user?.avatar}
+                name={user?.name}
+                size={56}
+                backgroundColor={userColor}
+                emojiSize={26}
+              />
+              {user?.accessory && ACCESSORY_EMOJI[user.accessory] ? (
+                <Text style={styles.profileAccessory}>
+                  {ACCESSORY_EMOJI[user.accessory]}
+                </Text>
+              ) : null}
             </View>
             <View style={{ flex: 1, marginLeft: SPACING.lg }}>
               <Text style={styles.profileName}>{user?.name || 'Guest'}</Text>
               <Text style={styles.profileEmail}>{user?.email || ''}</Text>
               <View style={styles.profileTagsRow}>
-                {user?.age && (
+                {user?.age ? (
                   <View style={styles.profileTag}>
                     <Text style={styles.profileTagText}>{user.age} years</Text>
                   </View>
-                )}
+                ) : null}
                 <View style={styles.profileTag}>
                   <Text style={styles.profileTagText}>Couples</Text>
                 </View>
@@ -216,7 +282,11 @@ export default function CouplesProfileTab() {
                     styles.menuItem,
                     i < group.items.length - 1 && styles.menuItemBorder,
                   ]}
-                  onPress={() => navigation.navigate(item.screen)}
+                  onPress={() =>
+                    item._kind === 'parent'
+                      ? openParent(item.screen)
+                      : navigation.navigate(item.screen)
+                  }
                   activeOpacity={0.7}
                 >
                   <Text style={styles.menuLabel}>{item.label}</Text>
@@ -292,14 +362,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.lg,
   },
-  pairAvatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
+  pairAvatarWrap: { position: 'relative' },
+  pairAccessory: {
+    position: 'absolute',
+    top: -6,
+    right: -2,
+    fontSize: 20,
   },
-  pairAvatarEmoji: { fontSize: 30 },
   pairAmp: {
     fontSize: 28,
     fontWeight: '300',
@@ -331,6 +400,7 @@ const styles = StyleSheet.create({
     color: COLORS.gray500,
     marginBottom: SPACING.md,
     fontWeight: '500',
+    textAlign: 'center',
   },
   pairingStatusBadge: {
     flexDirection: 'row',
@@ -377,14 +447,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.lg,
   },
-  profileAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
+  profileAvatarWrap: { position: 'relative' },
+  profileAccessory: {
+    position: 'absolute',
+    top: -4,
+    right: -2,
+    fontSize: 18,
   },
-  profileAvatarEmoji: { fontSize: 26 },
   profileName: {
     fontSize: TYPOGRAPHY.lg,
     fontWeight: '800',

@@ -16,20 +16,31 @@ import {
   BORDER_RADIUS,
   SHADOWS,
 } from '../../constants/colors';
-import dataStore from '../../utils/dataStore';
-import { WORKSHEET_TEMPLATES } from '../../data/worksheetTemplates';
+import {
+  listMyAssignments,
+  listWorksheets,
+  listAffirmations,
+} from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import TabScreenHeader from '../../components/TabScreenHeader';
 
-const STATUS_PROGRESS = { pending: 0, 'in-progress': 50, completed: 100 };
+const STATUS_PROGRESS = {
+  not_started: 0,
+  in_progress: 50,
+  completed: 100,
+  overdue: 0,
+};
 const STATUS_LABEL = {
-  pending: 'Not started',
-  'in-progress': 'In progress',
+  not_started: 'Not started',
+  in_progress: 'In progress',
   completed: 'Completed',
 };
 
 export default function HomeTab({ navigation }) {
-  const [user, setUser] = useState(null);
+  const { profile: user } = useAuth();
   const [pending, setPending] = useState([]);
+  const [worksheetsById, setWorksheetsById] = useState({});
+  const [affirmation, setAffirmation] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(
@@ -38,15 +49,25 @@ export default function HomeTab({ navigation }) {
       (async () => {
         try {
           setLoading(true);
-          await dataStore.initialize();
-          const u = await dataStore.getCurrentUser();
+          const [all, ws, affs] = await Promise.all([
+            listMyAssignments(),
+            listWorksheets(),
+            listAffirmations(),
+          ]);
           if (cancelled) return;
-          setUser(u);
-          if (u) {
-            const all = await dataStore.getAssignmentsByClient(u.id);
-            if (cancelled) return;
-            setPending(all.filter((a) => a.status !== 'completed'));
-          }
+          setPending((all || []).filter((a) => a.status !== 'completed'));
+          const map = {};
+          (ws || []).forEach((w) => {
+            map[w.id] = w;
+          });
+          setWorksheetsById(map);
+          // Pick today's affirmation from anything aimed at children or all.
+          const pool = (affs || []).filter(
+            (a) => a.audience === 'child' || a.audience === 'all'
+          );
+          setAffirmation(
+            pool.length > 0 ? pool[new Date().getDate() % pool.length] : null
+          );
         } catch (e) {
           console.log('[HomeTab] load error', e);
         } finally {
@@ -116,10 +137,10 @@ export default function HomeTab({ navigation }) {
           </View>
         ) : (
           pending.map((a) => {
-            const w = WORKSHEET_TEMPLATES[a.worksheetId];
+            const w = worksheetsById[a.worksheetId];
             if (!w) return null;
-            const progress = STATUS_PROGRESS[a.status] ?? 0;
-            const ctaLabel = a.status === 'in-progress' ? 'Continue' : 'Start';
+            const progress = a.progress ?? STATUS_PROGRESS[a.status] ?? 0;
+            const ctaLabel = a.status === 'in_progress' ? 'Continue' : 'Start';
             return (
               <TouchableOpacity
                 key={a.id}
@@ -139,16 +160,16 @@ export default function HomeTab({ navigation }) {
                   <View
                     style={[
                       styles.statusBadge,
-                      a.status === 'in-progress' && styles.statusBadgeInProgress,
+                      a.status === 'in_progress' && styles.statusBadgeInProgress,
                     ]}
                   >
                     <Text
                       style={[
                         styles.statusText,
-                        a.status === 'in-progress' && styles.statusTextInProgress,
+                        a.status === 'in_progress' && styles.statusTextInProgress,
                       ]}
                     >
-                      {STATUS_LABEL[a.status]}
+                      {STATUS_LABEL[a.status] || 'Not started'}
                     </Text>
                   </View>
                 </View>
@@ -177,7 +198,9 @@ export default function HomeTab({ navigation }) {
         <View style={styles.tipCard}>
           <Text style={styles.tipTitle}>Today's Tip</Text>
           <Text style={styles.tipBody}>
-            Take 3 deep breaths whenever you feel overwhelmed. In through your nose, out through your mouth.
+            {affirmation
+              ? affirmation.text
+              : "Take 3 deep breaths whenever you feel overwhelmed. In through your nose, out through your mouth."}
           </Text>
         </View>
       </ScrollView>
